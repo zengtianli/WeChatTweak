@@ -46,7 +46,7 @@ extension Tweak {
             print("Matched config: \(config)")
 
             print("------ Patch ------")
-            try await Command.patch(
+            let patched = try Command.patch(
                 app: options.app,
                 config: config
             )
@@ -54,7 +54,8 @@ extension Tweak {
 
             print("------ Resign ------")
             try await Command.resign(
-                app: options.app
+                app: options.app,
+                patchedBinaries: patched
             )
             print("Done!")
 
@@ -113,7 +114,7 @@ struct Tweak: AsyncParsableCommand {
                 }
             }
         )
-        var config: URL = URL(string:"https://raw.githubusercontent.com/sunnyyoung/WeChatTweak/refs/heads/master/config.json")!
+        var config: URL = URL(string:"https://raw.githubusercontent.com/zengtianli/WeChatTweak/refs/heads/master/config.json")!
     }
 
     static let configuration = CommandConfiguration(
