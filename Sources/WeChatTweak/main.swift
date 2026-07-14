@@ -8,6 +8,15 @@ import Foundation
 import Dispatch
 import ArgumentParser
 
+/// Which anti-revoke behaviour to apply.
+/// - silent: neutralise the revoke XML parser entirely — message stays, no tip. (default, WeChat 4.x current release behaviour)
+/// - keeptip: let the parser run (tip renders) but zero out `newmsgid` so the downstream
+///            delete-by-id finds nothing — message stays AND the recall tip still shows.
+enum PatchVariant: String, ExpressibleByArgument {
+    case silent
+    case keeptip
+}
+
 // MARK: Versions
 extension Tweak {
     struct Versions: AsyncParsableCommand {
@@ -34,6 +43,12 @@ extension Tweak {
         @OptionGroup
         var options: Tweak.Options
 
+        @Option(
+            name: .shortAndLong,
+            help: "Anti-revoke variant: silent (keep message, no tip) | keeptip (keep message + still show the recall tip). keeptip is only available on WeChat 4.x builds that define a revoke-keeptip target."
+        )
+        var variant: PatchVariant = .silent
+
         mutating func run() async throws {
             print("------ Version ------")
             let version = try await Command.version(app: options.app)
@@ -46,9 +61,11 @@ extension Tweak {
             print("Matched config: \(config)")
 
             print("------ Patch ------")
+            print("Variant: \(variant.rawValue)")
             let patched = try Command.patch(
                 app: options.app,
-                config: config
+                config: config,
+                variant: variant
             )
             print("Done!")
 

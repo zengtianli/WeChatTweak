@@ -40,22 +40,40 @@ flowchart TD
 
 > 地址/字节来自 `config.json`（4.1.11 build 269136 那条）与 `Sources/WeChatTweak/Patcher.swift` 的校验逻辑。
 
-## 「留提示」变体（开发中）
+## 「留提示」变体（`--variant keeptip`，已实现）
 
-「消息保留 **且** 仍显示『对方撤回了一条消息』提示」在技术上可行，且**已有人做到**：见 [sunnyyoung/WeChatTweak issue #1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038)，wuliyc 在微信 4.1.11（build 269136）上实现了消息保留 + 撤回提示照常。
+「消息保留 **且** 仍显示『对方撤回了一条消息』提示」已实现，用 `patch --variant keeptip` 打。做法与静默相反——不拦解析，而是**把 newmsgid 清零**让删除落空。
 
-逆向已确认：`0x48a03b0` 的 `cbz` 守着的是撤回 XML **解析器**（`TryParseMessageXML`），不是删除+提示本身。解析器把 `newmsgid`（删哪条）、`replacemsg`（提示文本）抽进结构体，下游的 consumer 再据此删消息 + 插提示。静默补丁跳过解析 → 下游拿不到输入 → 删除和提示一起不发生。
+逆向已确认：`0x48a03b0` 的 `cbz` 守着的是撤回 XML **解析器**（`TryParseMessageXML`），解析器把 `newmsgid`（删哪条）、`replacemsg`（提示文本）抽进结构体，下游 consumer 再据此删消息 + 插提示。其中 `newmsgid` 在 `0x48a0b44` 处被存进结构体（`str x0,[x19,#0x168]`）。
 
-思路与静默补丁相反，分两步：
+```mermaid
+flowchart TD
+    S["对方点撤回<br/>服务器推 revokemsg"] --> P["TryParseMessageXML 解析<br/>抽出 newmsgid + replacemsg"]
+    P --> ST["0x48a0b44 存 newmsgid 进结构体"]
 
-| | 静默变体（当前发布版） | 留提示变体（开发中） |
+    ST -->|"静默变体：cbz→b，整段解析被跳过"| SIL["下游拿不到 newmsgid/replacemsg<br/>→ 不删、也不提示（静默）"]
+
+    ST -->|"留提示变体：解析照跑<br/>但 str x0 → str xzr"| ZERO["newmsgid 被写成 0"]
+    ZERO --> DL["下游按 id=0 删本地消息 → 找不到目标 → 删不掉"]
+    ZERO --> TIP["下游用 replacemsg 插撤回提示 → 照常"]
+    DL --> KRES["结果：消息留着 + 显示撤回提示"]
+    TIP --> KRES
+
+    style SIL fill:#d4edda,stroke:#28a745
+    style KRES fill:#cce5ff,stroke:#004085
+    style ZERO fill:#fff3cd,stroke:#d39e00
+```
+
+两处等长字节改动（269136）：
+
+| 补丁点 | 静默变体 | 留提示变体 |
 |---|---|---|
-| 对 `0x48a03b0` 的 `cbz` | 改成 `b`，跳过撤回解析 | **恢复 `cbz`**，让解析照跑 |
-| 下游拿到 `newmsgid`/`replacemsg` | 拿不到 | 拿得到 |
+| `0x48a03b0`（`cbz w0`） | `E00F0034` → `7F000014`（改 `b`，跳过解析） | `→ E00F0034`（恢复/保持 `cbz`，让解析照跑；expected 兼容已静默补丁的 `7F000014`） |
+| `0x48a0b44`（`str x0,[x19,#0x168]`） | 不动 | `60B600F9` → `7FB600F9`（`str xzr`，把 newmsgid 写 0） |
 | 「插入撤回提示」（下游） | 无输入，不触发 | 照常执行 |
-| 「按 newmsgid 删本地消息」（下游） | 无输入，不触发 | 单独 **NOP 掉那一条调用** |
+| 「按 newmsgid 删本地消息」（下游） | 无输入，不触发 | 按 id=0 查无，删不掉 |
 | 结果 | 消息留着、无提示 | 消息留着、有提示 |
 
-**难点（逆向已确认）**：「删本地消息」的调用**不在**解析函数 `0x48a0140` 内，而在消费解析结果的**下游函数**里——精确 VA 静态未定位，需 lldb 动态断点（跟 `newmsgid` 的消费栈）或 wuliyc 的具体字节。恢复 `cbz`（第①步）字节已知；NOP 点（第②步）待定。
+**修正早前判断**：更早一度以为「留提示 = 定位并 NOP 掉下游那条删本地消息的调用」，并因该调用在虚派发/chained-fixup 接收侧、静态难定位而搁置——**方向错了**。正确做法不需要找到删除调用，只在 `newmsgid` 存入结构体的源头（`0x48a0b44`）清零即可。这条 `str x0`→`str xzr` 来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
 
-> **状态：逆向中，尚未实现、尚未验证。** 已确认「补丁块 = XML 解析器、删除在下游」；下游删除补丁点待定位。不代表本 fork 已产出可用的「留提示」补丁。
+> **状态：字节补丁已实现，静态复核通过**（打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr` 已 objdump 核对）。**最终「留消息 + 有提示」仍须实收一条真撤回验证**——无符号纯字节补丁除实测外无地面真值。fzlzjerry 另有 `--runtime-tip` 用注入 dylib 自定义提示文案，本 fork 未纳入。

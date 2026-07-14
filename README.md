@@ -13,13 +13,15 @@
 | 功能 | 说明 | 微信 3.8.x | 微信 4.x (268880 / 269136) |
 | --- | --- | :---: | :---: |
 | **防撤回（静默变体）** | 别人撤回的消息原样留在聊天里，不弹提示 | ✓ | ✓（当前发布版） |
-| **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | 🚧 开发中（逆向定位补丁点中） |
+| **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ✓（`--variant keeptip`，待实测撤回终验） |
 | **阻止自动更新** | 拦住自动升级，避免升级把补丁还原 | ✓ | — |
 | **客户端多开** | 同时登录多个账号 | ✓ | —（4.x 无字节补丁，需复制 App） |
 
-> **当前发布版在微信 4.x 上是「静默」防撤回**：撤回被拦在最上游的解析器，消息照常留着，但不弹「对方撤回了一条消息」提示——这是本 fork 目前已实现并可用的行为。
+> **微信 4.x 上有两种防撤回变体，打补丁时用 `--variant` 选**：
+> - **`--variant silent`（默认）**：撤回被拦在最上游的解析器，消息留着，但不弹「对方撤回了一条消息」提示。
+> - **`--variant keeptip`**：消息留着 **且** 仍显示撤回提示。做法与静默相反——让解析器照跑（提示才会渲染），只把「要删哪条」的 `newmsgid` 在写入结构体那一刻改写为 0，于是下游按 `newmsgid` 删本地消息时找不到目标、删不掉，消息保留而提示照常。这条思路（改 `str x0`→`str xzr`）来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
 >
-> **「留消息 + 仍显示撤回提示」在技术上可行，且已有人做到**（见 [issue #1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038)，wuliyc 在 4.1.11 上实现了消息保留 + 撤回提示照常）。本 fork 正在逆向定位对应的补丁点（换一种做法：不拦解析、让撤回处理块照跑，只 NOP 掉其中「删本地消息」那一条调用）。**此变体尚未实现、未验证**，进度见下方[「留提示」变体的思路](#留提示变体的思路)。
+> `keeptip` 变体的字节补丁已实现并通过静态复核，但**最终是否「留消息 + 有提示」仍须实收一条真撤回验证**（无符号纯字节补丁，除实测外无地面真值）。issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038) 中 wuliyc 报告在 4.1.11 上实现了同类效果。
 >
 > 微信 4.x 目前也只做了防撤回：多开只能整包复制 App，阻止更新的补丁点尚未纳入本 fork。
 
@@ -54,10 +56,14 @@ pkill -x WeChat
 .build/release/wechattweak versions
 
 # 5. 打补丁（微信在 /Applications 下、由 root 拥有，需 sudo）
-sudo .build/release/wechattweak patch
+sudo .build/release/wechattweak patch                    # 默认 = 静默变体（留消息、无提示）
+# 或：留消息 + 仍显示撤回提示
+sudo .build/release/wechattweak patch --variant keeptip
 
 # 6. 重新打开微信
 ```
+
+> **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 仅对定义了 `revoke-keeptip` 补丁点的 4.x 构建号可用（当前 269136），其它版本用 `--variant keeptip` 会报错提示不可用。
 
 打补丁会自动重签名（先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App），避免运行到被改代码时报 `Code Signature Invalid`。
 
@@ -97,21 +103,28 @@ wechattweak patch
 
 换句话说，静默只是**当前这个补丁点**的取舍，不是机制上限——保留解析、只在下游掐掉删除动作，就能留消息又保提示（见下节）。
 
-## 「留提示」变体的思路
+## 「留提示」变体（`--variant keeptip`）
 
-「消息保留 **且** 仍显示『对方撤回了一条消息』提示」**技术上可行、且已有人做到**：见 [issue #1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038)，wuliyc 在 4.1.11（build 269136）上实现了消息保留 + 撤回提示照常。
+用 `sudo .build/release/wechattweak patch --variant keeptip` 打这个变体：**消息保留、且仍显示「对方撤回了一条消息」提示**。
 
-本 fork 已对 269136 的 `wechat.dylib` 做了逆向，思路与当前静默补丁相反，分两步：
+思路与静默补丁相反——不拦解析，而是**让 newmsgid 失效**。撤回 XML 里的 `newmsgid` 决定「删本地哪条消息」，`replacemsg` 是提示文本。解析器 `TryParseMessageXML`（入口 `0x48a0140`）在 `0x48a0b44` 处把解析出的 `newmsgid` 存进结构体：
 
 ```
-静默变体：cbz → b，跳过撤回 XML 解析 → 下游删除+提示都拿不到输入
-留提示变体：① 恢复 cbz，让解析照跑（下游拿到 newmsgid + replacemsg）
-            ② 到下游 NOP 掉「按 newmsgid 删本地消息」那一次调用，保留插提示
+0x48a0b44: str  x0,  [x19, #0x168]   ; 60B600F9  把 newmsgid 存进结构体（要删的目标）
 ```
 
-**关键（逆向已确认，修正早前判断）**：那条「删本地消息」的调用**不在** `TryParseMessageXML` 解析函数（入口 `0x48a0140`）内——解析函数只负责把 `newmsgid`/`replacemsg` 抽进结构体；真正的删除发生在**消费这个结构体的下游函数**里。删除调用的精确 VA 目前**静态逆向尚未定位**，需要 lldb 动态断点（收到真撤回时跟 `newmsgid` 的消费栈）或参考 wuliyc 的具体字节来确定。
+留提示变体对 269136 做两处等长字节改动：
 
-> **状态：逆向进行中，尚未实现、尚未验证。** 已确认「补丁块 = XML 解析器、删除在下游」；下游删除调用的补丁点待定位。当前发布版仍只有静默变体。若要「留消息 + 有提示」，也可另做**注入式** tweak（dylib 注入 + hook / method swizzle），是独立于字节补丁的实现路径。
+| 补丁点 | 原字节 → 新字节 | 效果 |
+|---|---|---|
+| `0x48a03b0`（`cbz w0`） | `E00F0034` → `E00F0034`（恢复，兼容已打静默补丁的机器 `7F000014`） | 解析照跑，提示得以渲染 |
+| `0x48a0b44`（`str x0,[x19,#0x168]`） | `60B600F9` → `7FB600F9`（`str xzr`） | 存进的 `newmsgid` = **0**，下游按 id=0 删本地消息时找不到目标 → 删不掉，消息保留 |
+
+于是解析产生的撤回提示照常插入，而删除动作因为 `newmsgid` 被清零而落空。这条 `str x0`→`str xzr` 的做法来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式（该项目另有 `--runtime-tip` 用运行时注入自定义提示文案，本 fork 未纳入，只做纯字节补丁的默认提示）。
+
+> **修正早前判断**：更早的逆向记录一度以为「留提示 = 定位并 NOP 掉下游那条删本地消息的调用」，并因该调用位于虚派发/chained-fixup 之外的接收侧、静态难以定位而搁置。这是**方向错了**——正确做法不需要找到那条删除调用，只要在 `newmsgid` 存入结构体的源头把它清零，删除自然落空。参考 fzlzjerry 的 `revoke-tip` 才对上。
+>
+> **状态**：字节补丁已实现，并对 269136 的 `wechat.dylib` 静态复核通过（`cbz` 恢复为 `cbz w0`、`0x48a0b44` 变为 `str xzr`）。但**「留消息 + 有提示」的最终行为仍须实收一条真撤回验证**，无符号纯字节补丁除实测外无地面真值。
 
 ## 新增一个版本
 
