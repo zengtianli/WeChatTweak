@@ -1,0 +1,14 @@
+summary: >
+  macOS 微信补丁 CLI（Swift Package，fork 自 sunnyyoung/WeChatTweak）。纯字节补丁工具，
+  新增微信 4.x（build 268880/269136）防撤回支持——改 wechat.dylib 里 parseRevokeXML 的
+  cbz→b 让撤回永远走不到删消息代码（仅静默，无提示无高亮）。config.json 是补丁数据 SSOT，
+  按 CFBundleVersion 构建号匹配 + 写入前原始字节校验。
+key_scripts:
+  - Sources/WeChatTweak/main.swift    # ArgumentParser 入口 + versions/patch 子命令
+  - Sources/WeChatTweak/Command.swift # 编排：读版本、逐 target 打补丁、重签名
+  - Sources/WeChatTweak/Config.swift  # config.json 解码
+  - Sources/WeChatTweak/Patcher.swift # Mach-O VA→偏移 + 字节校验 + 等长写入
+  - config.json                       # 补丁数据 SSOT（每构建号一组 targets/entries）
+  - Makefile                          # swift build 通用二进制
+depends_on:
+  - apple/swift-argument-parser (>=1.6.0)
