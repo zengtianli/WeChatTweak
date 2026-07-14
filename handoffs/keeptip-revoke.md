@@ -9,7 +9,27 @@
 
 **群聊无提示根因（静态已定性）**：整个 revoke 模块 `0x48a0140..0x48ad700` 内写 newmsgid 字段 `[x19,#0x168]` 的**只有 `0x48a0b44` 一处**（另 `[sp,#0x168]` 两处是栈变量无关），私聊群聊共用。私聊提示插入不依赖 newmsgid → 照出；群聊提示渲染依赖 newmsgid（决定挂哪条下面）→ 被清零后连带失效 → 静默。下游 consumer 经虚派发/chained-fixup 分发，静态无独立「群聊提示」补丁点（与前 3 路逆向撞的是同一堵墙，按停止线不再盲啃）。
 
-**群聊出提示的可行路径**：只能走运行时注入——注入 dylib hook 撤回处理、客户端自行合成并插入提示（fzlzjerry `--runtime-tip` 路线），是独立新工程，本 fork 未纳入。silent + keeptip(私聊) 两个字节变体可靠可用。
+**群聊出提示的可行路径**：见下节「群聊深挖」。silent + keeptip(私聊) 两个字节变体可靠可用。
+
+## 群聊深挖（2026-07-14，读 fzlzjerry Runtime.mm 源码核实）
+
+**结论：fzlzjerry 的 `--runtime-tip` 对群聊同样无效，纯字节/文本改写这条路给不了群聊提示。已放弃移植。**
+
+读 `Runtime.mm:1259-1327` `hookedParseRevokeXML`（原生解析后运行）确认其真实机制：
+- 全文件**零** `objc_msgSend`/selector/vtable/独立插入调用——它**不自己插提示行**。
+- 别人撤回分支：`*newMsgId=0`（保消息）+ `replaceMsg->assign(renderRevokeTip(...))` **只改写 replaceMsg 文本**，靠**微信原生代码**把这条 replaceMsg 当提示插入。
+- 自己撤回分支：`*newMsgId=realNewMsgId` 恢复真值 → 微信正常删除（原生「你撤回了一条消息」）。**这行证明 newmsgid 直接控制删除**。
+
+因此 fzlzjerry 落在和我们字节 keeptip **完全相同的 newmsgid=0 状态**，只是提示文本不同；既然 keeptip 群聊不出提示（原生插入未触发），fzlzjerry 依赖同一原生插入、群聊必然也不出。**airtight，无需降级实验。**
+
+**根本矛盾（bind）**：newmsgid 同时控制①删除 ②群聊提示的插入/锚定。
+- newmsgid=0 → 不删（消息保留 ✓）但群聊提示不插入（✗）。
+- newmsgid=真 → 群聊提示插入且锚定（✓）但消息被删（✗）。
+- 私聊提示不依赖 newmsgid，故 newmsgid=0 时私聊照出。
+
+**唯一能同时满足群聊「保消息+有提示」的路 = 解耦删除与提示**：保留真 newmsgid（让原生提示对群/私都插入并锚定），转而在**下游掐掉那次删除调用**。而那条删除调用正是前 3 路静态逆向撞墙的虚派发接收侧——**只能动态定位**（lldb 断在 WCDB 删除原语 / sqlite3_prepare 抓 DELETE + backtrace，用户触发一次真群聊撤回）。找到后 NOP 它（保 newmsgid 真值）→ 私聊+群聊都留消息+有提示。属需用户配合的动态 RE 工程，结果不保证。
+
+**替代**：注入 dylib、hook 那条删除函数跳过删除（等价于 NOP，但更稳健）——同样需先动态定位删除函数。
 
 ---
 （以下为实现记录）

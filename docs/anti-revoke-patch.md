@@ -78,4 +78,4 @@ flowchart TD
 
 > **状态：已实现，build 269136（4.1.11）实机实测——私聊有提示、群聊仍静默无提示。** 静态复核：打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr`（objdump 核对），与 fzlzjerry `revoke-tip` 对 269110 的补丁逐字节同构。
 >
-> **群聊无提示**：revoke 模块内写 newmsgid 字段的只有 `0x48a0b44` 一处、私聊群聊共用；群聊提示渲染依赖 newmsgid，被清零后连带失效 → 静默。该下游消费者经虚派发分发、纯字节静态定位不到独立群聊提示点。群聊出提示只能走运行时注入（fzlzjerry `--runtime-tip` 路线），本 fork 未纳入。
+> **群聊无提示**：revoke 模块内写 newmsgid 字段的只有 `0x48a0b44` 一处、私聊群聊共用；群聊提示渲染依赖 newmsgid，被清零后连带失效 → 静默。**运行时注入（fzlzjerry `--runtime-tip`）也解决不了**——读其 `Runtime.mm` 确认它只改写 replaceMsg 文本、仍清零 newmsgid、靠原生插入，落在同一 newmsgid=0 状态，群聊原生插入照样不触发。真正解法 = 保留真 newmsgid + 下游 NOP 删除调用，该调用经虚派发分发需 lldb 动态定位（触发真群聊撤回看 backtrace），属需实机配合的独立工程，本 fork 未纳入。
