@@ -76,4 +76,4 @@ flowchart TD
 
 **修正早前判断**：更早一度以为「留提示 = 定位并 NOP 掉下游那条删本地消息的调用」，并因该调用在虚派发/chained-fixup 接收侧、静态难定位而搁置——**方向错了**。正确做法不需要找到删除调用，只在 `newmsgid` 存入结构体的源头（`0x48a0b44`）清零即可。这条 `str x0`→`str xzr` 来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
 
-> **状态：字节补丁已实现，静态复核通过**（打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr` 已 objdump 核对）。**最终「留消息 + 有提示」仍须实收一条真撤回验证**——无符号纯字节补丁除实测外无地面真值。fzlzjerry 另有 `--runtime-tip` 用注入 dylib 自定义提示文案，本 fork 未纳入。
+> **状态：已实现，build 269136（4.1.11）实机实测通过**——撤回后消息保留、且显示「对方撤回了一条消息」提示。静态复核：打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr`（objdump 核对），与 fzlzjerry `revoke-tip` 对 269110 的补丁逐字节同构。fzlzjerry 另有 `--runtime-tip` 用注入 dylib 自定义提示文案，本 fork 未纳入。

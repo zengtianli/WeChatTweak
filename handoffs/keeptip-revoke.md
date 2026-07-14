@@ -1,6 +1,15 @@
-# 留提示防撤回（4.1.11 / 269136）— 已实现
+# 留提示防撤回（4.1.11 / 269136）— 已实现且实机实测通过
 
-目标：让 4.x 防撤回从「静默」升级为「留消息 + 显示撤回提示」（issue #1038，wuliyc 称可行）。**已实现为 `--variant keeptip`。**
+目标：让 4.x 防撤回从「静默」升级为「留消息 + 显示撤回提示」（issue #1038）。**已实现为 `--variant keeptip`，269136 实机实测有提示。**
+
+## ✅ 2026-07-14 最终实测结论：keeptip 纯字节补丁在 269136 上 = 留消息 + 有提示
+
+用户实机测撤回：`--variant keeptip` 生效，撤回后消息保留、且显示「对方撤回了一条消息」提示。
+
+> 注：本会话中途一度记为「实测失败/仍静默」，那是早一轮测试的结论；用户随后复测确认**有提示**，以最终实测为准，纯字节路线成立。fzlzjerry 弃用纯字节 `revoke-tip` 是因为它分不清自撤/他撤可能冒重复提示（体验取舍），并非纯字节在本 build 给不了提示。
+
+---
+（以下为实现记录）
 
 ## 结论（机制已定位、代码已实现、静态已复核）
 
@@ -30,11 +39,10 @@
 - `patch --variant keeptip` → 只打 revoke-keeptip；`0x48a03b0`:`7F000014→E00F0034`、`0x48a0b44`:`60B600F9→7FB600F9`；重抽 arm64 切片 objdump 确认 = `cbz w0` / `str xzr`。
 - `patch --variant silent` → 只打 revoke（`E00F0034→7F000014`）。互斥选择 + fat 切片偏移定位 + expected 数组 guard 全对。
 
-## 唯一待办：实收撤回终验（只有用户能做）
-退微信 → `swift build -c release` → `sudo .build/release/wechattweak patch --variant keeptip` → 重开 → 找人发消息再撤回 → 确认「消息还在 **且** 显示撤回提示」。
-- 通过：完成，README 去掉「待实测撤回终验」标注。
-- 不通过（删不掉但也没提示 / 或仍被删）：说明 269136 下游删除逻辑或提示渲染与 fzlzjerry 覆盖的构建号有差异 → 回退 `--variant silent`，据实测现象重新逆向。
-- 回滚：官网重装微信覆盖，或 `patch --variant silent`。
+## 实收撤回终验：✅ 已通过（2026-07-14 用户实机）
+退微信 → `swift build -c release` → `sudo .build/release/wechattweak patch --variant keeptip` → 重开 → 找人发消息再撤回 → 「消息还在 **且** 显示撤回提示」= 确认。README 已去掉「待实测」标注。
+- 切回静默：`patch --variant silent`（互斥、幂等）。
+- 回滚：官网重装微信覆盖。
 
 ## 停止线
 同一障碍试 ≥3 次无进展 → 停、记这里、回报。补丁致微信起不来 → 官网重装覆盖回滚。
