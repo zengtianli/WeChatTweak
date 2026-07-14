@@ -5,17 +5,19 @@
 ```mermaid
 flowchart TD
     S["对方点撤回<br/>服务器推 revokemsg 指令"] --> P["客户端 parseRevokeXML 解析<br/>（在 wechat.dylib 里）"]
-    P --> B{"补丁点：entry+0x270 的这条指令<br/>4.1.11 地址 0x48a03b0"}
+    P --> INS["执行补丁点 0x48a03b0 的那条指令<br/>（两条都跳向同一个 SKIP = 跳过删除逻辑）"]
 
-    B -->|"未打补丁：cbz w0, SKIP<br/>字节 E00F0034"| O1["w0≠0（正常情况）→ 不跳转，往下执行"]
-    O1 --> O2["删掉本地这条消息"]
+    INS -->|"未打补丁：cbz w0, SKIP（E00F0034）"| C{"w0 == 0 ?"}
+    C -->|"否：真撤回的正常情况（w0≠0）→ 不跳，往下走"| O2["删掉本地这条消息"]
     O2 --> O3["插入「对方撤回了一条消息」提示"]
     O3 --> ORES["结果：消息没了 + 显示撤回提示"]
+    C -->|"是：跳到 SKIP"| SKIP["跳过删除逻辑"]
 
-    B -->|"打补丁后：b SKIP<br/>字节 7F000014"| N1["无条件跳转到 SKIP<br/>（跳过删除逻辑）"]
-    N1 --> NRES["结果：消息原样留着<br/>不删、也不弹提示（静默）"]
+    INS -->|"打补丁后：b SKIP（7F000014）<br/>= 把 w0==0? 这个条件恒真化"| SKIP
 
-    style B fill:#fff3cd,stroke:#d39e00
+    SKIP --> NRES["结果：消息原样留着<br/>不删、也不弹提示（静默）"]
+
+    style C fill:#fff3cd,stroke:#d39e00
     style ORES fill:#f8d7da,stroke:#c00
     style NRES fill:#d4edda,stroke:#28a745
 ```
