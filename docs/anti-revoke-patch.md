@@ -76,4 +76,6 @@ flowchart TD
 
 **修正早前判断**：更早一度以为「留提示 = 定位并 NOP 掉下游那条删本地消息的调用」，并因该调用在虚派发/chained-fixup 接收侧、静态难定位而搁置——**方向错了**。正确做法不需要找到删除调用，只在 `newmsgid` 存入结构体的源头（`0x48a0b44`）清零即可。这条 `str x0`→`str xzr` 来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
 
-> **状态：已实现，build 269136（4.1.11）实机实测通过**——撤回后消息保留、且显示「对方撤回了一条消息」提示。静态复核：打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr`（objdump 核对），与 fzlzjerry `revoke-tip` 对 269110 的补丁逐字节同构。fzlzjerry 另有 `--runtime-tip` 用注入 dylib 自定义提示文案，本 fork 未纳入。
+> **状态：已实现，build 269136（4.1.11）实机实测——私聊有提示、群聊仍静默无提示。** 静态复核：打补丁后 `0x48a03b0` = `cbz w0`、`0x48a0b44` = `str xzr`（objdump 核对），与 fzlzjerry `revoke-tip` 对 269110 的补丁逐字节同构。
+>
+> **群聊无提示**：revoke 模块内写 newmsgid 字段的只有 `0x48a0b44` 一处、私聊群聊共用；群聊提示渲染依赖 newmsgid，被清零后连带失效 → 静默。该下游消费者经虚派发分发、纯字节静态定位不到独立群聊提示点。群聊出提示只能走运行时注入（fzlzjerry `--runtime-tip` 路线），本 fork 未纳入。
