@@ -132,13 +132,25 @@ wechattweak patch
 
 ## 新增一个版本
 
-微信一更新，构建号变、地址全变，需要重新定位补丁点：
+微信一更新，构建号变、地址全变。但补丁点的几何特征跨版本不变，所以**不用再人肉逆向**——跑自动定位器即可：
 
-1. 从目标微信取 `Contents/Resources/wechat.dylib`，`lipo -thin arm64` 抽出 arm64 切片。
-2. 按上面的几何特征搜 `parseRevokeXML` 入口 `E`（三条 `stp` 序言，且 `E+0x270` 是 `E00F0034`、`E+0xA04` 是 `60B600F9`），确认唯一命中。
-3. 防撤回补丁点 = `E + 0x270`，原字节 `E00F0034` → 写 `7F000014`。
-4. 把 `{ version, targets:[{ identifier:"revoke", binary:"Contents/Resources/wechat.dylib", entries:[{arch,addr,expected,asm}] }] }` 加进 `config.json`。
-5. `swift build -c release`，`wechattweak versions` 确认，打补丁后实测撤回。
+```bash
+# 对当前 /Applications/WeChat.app 自动定位，打印可粘贴的 config.json 条目
+python3 tools/locate_revoke.py
+
+# 定位后直接把条目追加进本仓库 config.json（该构建号不存在时才加）
+python3 tools/locate_revoke.py --append
+
+# 也可指定 App 或直接指定 dylib
+python3 tools/locate_revoke.py -a /path/to/WeChat.app
+python3 tools/locate_revoke.py -d /path/to/wechat.dylib
+```
+
+定位器扫的是这组不变签名并要求**唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`（`E00F0034`）、`E+0xA04` 是 `str <Xt>,[x19,#0x168]`（原始 `60B600F9`；已装 keeptip 变体则为 `7FB600F9`，两者都认）。补丁点 VA = `E+0x270`，`expected` 恒为 `E00F0034`、`asm` 恒为 `7F000014`。
+
+拿到条目后：`swift build -c release` → `wechattweak versions` 确认 → 打补丁后实测撤回。
+
+> 若定位器报「命中 0 处」或「命中多处」，说明该构建改了 `parseRevokeXML` 布局，需人工用 `lipo -thin arm64` 抽切片后复核几何特征。手工兜底：补丁点 = 入口 `E + 0x270`，原字节 `E00F0034` → 写 `7F000014`。
 
 ## 参考
 
