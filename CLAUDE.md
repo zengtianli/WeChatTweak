@@ -18,7 +18,7 @@ macOS 微信客户端补丁 CLI，**Swift Package**（非 Python）。fork 自 [
 | 产物 | `wechattweak`（CLI） |
 | 唯一依赖 | apple/swift-argument-parser ≥1.6.0 |
 | 补丁数据 SSOT | `config.json`（按 `CFBundleVersion` 构建号匹配，非营销版本号） |
-| 默认 config 源 | 远程 raw URL（本 fork master 的 config.json）；可 `-c <本地路径>` 覆盖 |
+| 默认 config 源 | **本地优先**：先找 cwd 再从可执行文件向上找 `config.json`（源码编译流程开箱即用，`locate_revoke.py --append` 加的版本立即生效）；本地找不到才回退远程 raw URL；可 `-c <路径或URL>` 覆盖 |
 | 上游 remote | https://github.com/zengtianli/WeChatTweak |
 | License | AGPL-3.0（沿用上游） |
 

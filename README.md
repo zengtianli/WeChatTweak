@@ -148,7 +148,7 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 
 定位器扫的是这组不变签名并要求**唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`（`E00F0034`）、`E+0xA04` 是 `str <Xt>,[x19,#0x168]`（原始 `60B600F9`；已装 keeptip 变体则为 `7FB600F9`，两者都认）。补丁点 VA = `E+0x270`，`expected` 恒为 `E00F0034`、`asm` 恒为 `7F000014`。
 
-拿到条目后：`swift build -c release` → `wechattweak versions` 确认 → 打补丁后实测撤回。
+拿到条目后：`swift build -c release` → `wechattweak versions` 确认 → 打补丁后实测撤回。`versions`/`patch` **默认就读本仓库的本地 `config.json`**（先 cwd 再从可执行文件向上找），所以 `--append` 加进去的版本直接生效，不用再 `-c`；本地找不到才回退远程。
 
 > 若定位器报「命中 0 处」或「命中多处」，说明该构建改了 `parseRevokeXML` 布局，需人工用 `lipo -thin arm64` 抽切片后复核几何特征。手工兜底：补丁点 = 入口 `E + 0x270`，原字节 `E00F0034` → 写 `7F000014`。
 

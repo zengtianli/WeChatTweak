@@ -131,7 +131,37 @@ struct Tweak: AsyncParsableCommand {
                 }
             }
         )
-        var config: URL = URL(string:"https://raw.githubusercontent.com/zengtianli/WeChatTweak/refs/heads/master/config.json")!
+        var config: URL = Options.resolveDefaultConfig()
+
+        /// Resolve the config.json to use by default.
+        ///
+        /// Prefer a **local** config.json so that a build you just added via
+        /// `tools/locate_revoke.py --append` is picked up without having to pass `-c`.
+        /// Search order: current directory, then walk up from the executable's directory
+        /// (covers `.build/release/wechattweak` → repo root). Only when no local file is
+        /// found do we fall back to the fork's remote master config.json (e.g. running a
+        /// bare prebuilt binary outside any checkout).
+        private static func resolveDefaultConfig() -> URL {
+            let fm = FileManager.default
+            var dirs: [URL] = [URL(fileURLWithPath: fm.currentDirectoryPath, isDirectory: true)]
+
+            let exe = URL(fileURLWithPath: CommandLine.arguments[0]).resolvingSymlinksInPath()
+            var dir = exe.deletingLastPathComponent()
+            for _ in 0..<8 {
+                dirs.append(dir)
+                let parent = dir.deletingLastPathComponent()
+                if parent.path == dir.path { break }
+                dir = parent
+            }
+
+            for directory in dirs {
+                let candidate = directory.appendingPathComponent("config.json")
+                if fm.fileExists(atPath: candidate.path) {
+                    return candidate
+                }
+            }
+            return URL(string: "https://raw.githubusercontent.com/zengtianli/WeChatTweak/refs/heads/master/config.json")!
+        }
     }
 
     static let configuration = CommandConfiguration(
