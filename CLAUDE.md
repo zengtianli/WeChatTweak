@@ -1,5 +1,7 @@
 # CLAUDE.md · WeChatTweak
 
+> 📋 会话回顾：handoffs/sessions-recap.md（5 会话 merge,截至 2026-07-19;/start 从此接最新进度,源会话已退役）
+
 > 全局铁律/凭证/偏好见 `~/.claude/CLAUDE.md`；`~/Apps` 子公司约束见 `~/Apps/CLAUDE.md`。此处只放本 app 特有导航，不复述。
 
 ## 这是什么
