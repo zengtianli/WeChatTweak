@@ -33,10 +33,23 @@ flowchart TD
 | | 墙1 · 版本墙 | 墙2 · 路径墙 | 墙3 · 写入墙 |
 |---|---|---|---|
 | **报什么** | `Unsupported version` | `Unsupported version`（同报错、不同根因） | `You don't have permission to save "wechat.dylib"` |
-| **根因** | 你的构建号地址全变、config 里没有它 | patch 默认去读**远程 master**，看不见你**本地** `--append` 加的版本 | sudo 下仍写不进 `/Applications` 里的 dylib（macOS 保护 / 文件标志之类） |
+| **根因** | 你的构建号地址全变、config 里没有它 | patch 默认去读**远程 master**，看不见你**本地** `--append` 加的版本 | macOS 14+ 的 **App Management/TCC** 拦改签名 app，`sudo` 无效（TCC 认终端进程不认 root） |
 | **发生时机** | 一开始就撞（版本对不上） | 加了本地条目、以为该好了，却还报同样的错 | 版本已匹配、addr 已命中，倒在最后写入 |
 | **谁碰上** | 所有非 269136 用户（xiucz/wuliyc/Air2018…） | 任何按 README「本地加条目」流程走的人 | xiucz（269111，版本已对） |
-| **解了吗** | ✅ `locate_revoke.py` 自动定位，无需会汇编 | ✅ commit 6111506 改默认**本地优先**读 config | ❌ 独立问题，写入权限层，尚未定位根因 |
+| **解了吗** | ✅ `locate_revoke.py` 自动定位，无需会汇编 | ✅ commit 6111506 改默认**本地优先**读 config | ⚠️ 根因已定位=App Management；解法：给终端授「App 管理」权限（见下节），非代码问题 |
+
+## 墙3（写入墙）的根因与解法
+
+`sudo` 都还报 `You don't have permission to save "wechat.dylib"` —— 这**不是**普通文件权限，是 **macOS 14+（Sonoma 起）的 App Management / TCC 保护**在拦：改动一个由开发者签名的 `.app` bundle（微信是 Tencent 签的）会被系统拦，且 **TCC 校验的是发起进程（你的终端 App），不认 `sudo`/root**——所以加 `sudo` 没用，报的是内核 `EPERM`。跟构建号、config 路径完全无关。
+
+**主解法（推荐）**：授予终端「App 管理」权限——
+1. 系统设置 → 隐私与安全性 → **App 管理**（App Management）
+2. 打开你跑命令的那个终端（Terminal.app / iTerm / VS Code 终端）的开关；若列表里没有，点 `+` 手动添加
+3. 完全退出并重开该终端 → 重跑 `sudo .build/release/wechattweak patch`
+
+> 排查确认：`csrutil status` 看 SIP、`ls -lO wechat.dylib` 看有无 `uchg/schg` immutable 标志。若真有 immutable 标志（少见）先 `sudo chflags noschg,nouchg <path>`；但绝大多数是上面的 App Management，不是 flag。
+
+**兜底（不想动隐私设置）**：把整包复制出 `/Applications` 再打——bundle 不在受保护位置就不触发该拦截。
 
 ## 一句话总结
 

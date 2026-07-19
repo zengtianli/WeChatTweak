@@ -152,6 +152,11 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 
 > 若定位器报「命中 0 处」或「命中多处」，说明该构建改了 `parseRevokeXML` 布局，需人工用 `lipo -thin arm64` 抽切片后复核几何特征。手工兜底：补丁点 = 入口 `E + 0x270`，原字节 `E00F0034` → 写 `7F000014`。
 
+## 常见问题
+
+- **`Unsupported version`**：你的构建号不在 `config.json`。跑 `python3 tools/locate_revoke.py --append` 自动加上再 `swift build`。若加了本地条目仍报错，确认用的是本仓库编译出的二进制（默认已本地优先读 config，不必 `-c`）。
+- **`sudo` 都报 `You don't have permission to save "wechat.dylib"`**：macOS 14+ 的 **App Management** 保护在拦（不认 `sudo`）。系统设置 → 隐私与安全性 → **App 管理**，打开你所用终端（Terminal/iTerm/VS Code）的开关，退出重开终端再打补丁。详见 [`docs/user-blockers.md`](docs/user-blockers.md)。
+
 ## 参考
 
 - [微信 macOS 客户端拦截撤回功能实践](https://blog.sunnyyoung.net/wei-xin-macos-ke-hu-duan-lan-jie-che-hui-gong-neng-shi-jian/)（上游作者）
