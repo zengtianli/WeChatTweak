@@ -59,3 +59,7 @@ xcuserdata/
 ### Workspace ###
 
 /wechattweak
+
+# Python (tools/)
+__pycache__/
+*.pyc
