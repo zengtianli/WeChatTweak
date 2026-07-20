@@ -21,7 +21,10 @@
           {
             "arch": "arm64",
             "addr": "48a03b0",
-            "expected": ["E00F0034", "7F000014"],
+            "expected": [
+              "E00F0034",
+              "7F000014"
+            ],
             "asm": "E00F0034"
           },
           {
@@ -48,6 +51,27 @@
             "asm": "7F000014"
           }
         ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "450a144",
+            "expected": [
+              "E00F0034",
+              "7F000014"
+            ],
+            "asm": "E00F0034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "450a8d8",
+            "expected": "60B600F9",
+            "asm": "7FB600F9"
+          }
+        ]
       }
     ]
   },
@@ -63,6 +87,27 @@
             "addr": "450a128",
             "expected": "E00F0034",
             "asm": "7F000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "450a128",
+            "expected": [
+              "E00F0034",
+              "7F000014"
+            ],
+            "asm": "E00F0034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "450a8bc",
+            "expected": "60B600F9",
+            "asm": "7FB600F9"
           }
         ]
       }

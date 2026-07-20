@@ -5,7 +5,10 @@ locate_revoke.py — 自动定位微信 4.x 防撤回补丁点，为任意构建
 背景：撤回补丁点每个构建号地址都变，但几何特征跨版本不变——
 `parseRevokeXML` 入口 E 满足：E+0x270 处是 `cbz w0`(E00F0034)、
 E+0xA04 处是 `str x0,[x19,#0x168]`(60B600F9)。扫这组签名即可唯一定位。
-补丁点 VA = E+0x270，`expected`=E00F0034、`asm`=7F000014 恒定。
+silent 补丁点 VA = E+0x270，`expected`=E00F0034、`asm`=7F000014 恒定。
+keeptip 变体多一个点 VA = E+0xA04（就是签名的第二个锚点，白送），
+把 `str x0,[x19,#0x168]`(60B600F9) 改成 `str xzr`(7FB600F9) 清零 newmsgid。
+两个 target 一起输出：`revoke`(静默) 和 `revoke-keeptip`(留提示)。
 
 用法：
     python3 tools/locate_revoke.py                      # 默认 /Applications/WeChat.app
@@ -28,6 +31,8 @@ CBZ_W0 = bytes.fromhex("E00F0034")        # E+0x270: cbz w0, SKIP（补丁点原
 STR_NEWMSGID_MASKED = 0xF900B660          # str ?,[x19,#0x168]，Rt 位已清零
 STR_RT_MASK = 0xFFFFFFE0                   # 掩掉 Rt（低 5 位）
 PATCH_ASM = "7F000014"                     # b SKIP（写入字节）
+STR_X0_HEX = "60B600F9"                    # str x0,[x19,#0x168]（keeptip 点原字节）
+STR_XZR_HEX = "7FB600F9"                   # str xzr,[x19,#0x168]（keeptip 点写入字节）
 OFF_CBZ = 0x270                            # 补丁点相对函数入口 E 的偏移
 OFF_STR = 0xA04                            # newmsgid 存储相对 E 的偏移
 DELTA = OFF_STR - OFF_CBZ                  # 0x794：补丁点 → newmsgid 存储
@@ -156,26 +161,51 @@ def main():
     entry_e = va - OFF_CBZ
     stp_ok = is_stp_prologue(sl, fo - OFF_CBZ)
 
+    va_tip = va + DELTA
+    str_word = struct.unpack("<I", sl[fo + DELTA:fo + DELTA + 4])[0]
+    str_hex = format(struct.unpack(">I", struct.pack("<I", str_word))[0], "08X")
+    str_state = {STR_X0_HEX: "原始 str x0", STR_XZR_HEX: "已打 keeptip 补丁 (str xzr)"}.get(str_hex, "非常规 Rt=%d" % (str_word & 0x1F))
+
     print("===== 定位结果 =====")
     print("微信构建号 (CFBundleVersion): %s" % (build or "未知（用 --app 指向 App 可自动读取）"))
     print("parseRevokeXML 入口 E:        0x%x" % entry_e)
-    print("补丁点 VA (E+0x270):          0x%x" % va)
+    print("silent 补丁点 VA (E+0x270):   0x%x" % va)
+    print("keeptip 补丁点 VA (E+0xA04):  0x%x  当前字节 %s（%s）" % (va_tip, str_hex, str_state))
     print("入口 stp 序言弱校验:          %s" % ("通过" if stp_ok else "未匹配（仅提示，不影响双点签名唯一命中）"))
     print()
 
-    entry = {
-        "arch": "arm64",
-        "addr": format(va, "x"),
-        "expected": "E00F0034",
-        "asm": PATCH_ASM,
+    silent_target = {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [{
+            "arch": "arm64",
+            "addr": format(va, "x"),
+            "expected": "E00F0034",
+            "asm": PATCH_ASM,
+        }],
+    }
+    # keeptip：把 cbz 恢复原样（接受 pristine 或已打过 silent 的机器），再清零 newmsgid。
+    keeptip_target = {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+            {
+                "arch": "arm64",
+                "addr": format(va, "x"),
+                "expected": ["E00F0034", PATCH_ASM],
+                "asm": "E00F0034",
+            },
+            {
+                "arch": "arm64",
+                "addr": format(va_tip, "x"),
+                "expected": STR_X0_HEX,
+                "asm": STR_XZR_HEX,
+            },
+        ],
     }
     block = {
         "version": build or "REPLACE_WITH_BUILD",
-        "targets": [{
-            "identifier": "revoke",
-            "binary": "Contents/Resources/wechat.dylib",
-            "entries": [entry],
-        }],
+        "targets": [silent_target, keeptip_target],
     }
     print("===== 可粘贴进 config.json 的条目 =====")
     print(json.dumps(block, ensure_ascii=False, indent=2))

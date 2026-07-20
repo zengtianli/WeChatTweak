@@ -63,7 +63,7 @@ sudo .build/release/wechattweak patch --variant keeptip
 # 6. 重新打开微信
 ```
 
-> **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 仅对定义了 `revoke-keeptip` 补丁点的 4.x 构建号可用（当前 269136），其它版本用 `--variant keeptip` 会报错提示不可用。
+> **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 仅对定义了 `revoke-keeptip` 补丁点的 4.x 构建号可用（269136 实机实测；269110/269111 的 keeptip 点由几何关系 `+0x794` 推导、**未经实机验证**，写入前的原始字节校验会兜底：地址不对直接报 `expectedMismatch` 拒写，不会弄坏微信）。其它 4.x 版本先跑 `python3 tools/locate_revoke.py --append` 自动补齐两个 target 再重编译。
 
 打补丁会自动重签名（先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App），避免运行到被改代码时报 `Code Signature Invalid`。
 
@@ -146,7 +146,17 @@ python3 tools/locate_revoke.py -a /path/to/WeChat.app
 python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 ```
 
-定位器扫的是这组不变签名并要求**唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`（`E00F0034`）、`E+0xA04` 是 `str <Xt>,[x19,#0x168]`（原始 `60B600F9`；已装 keeptip 变体则为 `7FB600F9`，两者都认）。补丁点 VA = `E+0x270`，`expected` 恒为 `E00F0034`、`asm` 恒为 `7F000014`。
+定位器扫的是这组不变签名并要求**唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`（`E00F0034`）、`E+0xA04` 是 `str <Xt>,[x19,#0x168]`（原始 `60B600F9`；已装 keeptip 变体则为 `7FB600F9`，两者都认）。
+
+签名的**两个锚点正好就是两个变体的补丁点**，所以定位器一次输出 `revoke` 和 `revoke-keeptip` 两个 target：
+
+| 变体 | 补丁点 VA | `expected` | `asm` |
+|---|---|---|---|
+| `revoke`（静默） | `E+0x270` | `E00F0034` | `7F000014` |
+| `revoke-keeptip` | `E+0x270`（还原 cbz） | `E00F0034` 或 `7F000014` | `E00F0034` |
+| `revoke-keeptip` | `E+0xA04` | `60B600F9` | `7FB600F9` |
+
+即 keeptip 点 = 静默点 `+ 0x794`，跨构建号恒定。
 
 拿到条目后：`swift build -c release` → `wechattweak versions` 确认 → 打补丁后实测撤回。`versions`/`patch` **默认就读本仓库的本地 `config.json`**（先 cwd 再从可执行文件向上找），所以 `--append` 加进去的版本直接生效，不用再 `-c`；本地找不到才回退远程。
 
@@ -155,6 +165,7 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 ## 常见问题
 
 - **`Unsupported version`**：你的构建号不在 `config.json`。跑 `python3 tools/locate_revoke.py --append` 自动加上再 `swift build`。若加了本地条目仍报错，确认用的是本仓库编译出的二进制（默认已本地优先读 config，不必 `-c`）。
+- **`The keeptip variant is not available for WeChat build XXXXXX`**：该构建号在 `config.json` 里只有 `revoke`（静默）没有 `revoke-keeptip`——早期条目是从 issue 评论手工收录的，只带了静默那一个补丁点。跑 `python3 tools/locate_revoke.py`（不带 `--append` 只打印），把输出里的 `revoke-keeptip` target 补进 `config.json` 对应版本的 `targets` 数组，`swift build -c release` 后即可用。已收录的构建号见上面支持表。
 - **`sudo` 都报 `You don't have permission to save "wechat.dylib"`**：macOS 14+ 的 **App Management** 保护在拦（不认 `sudo`）。系统设置 → 隐私与安全性 → **App 管理**，打开你所用终端（Terminal/iTerm/VS Code）的开关，退出重开终端再打补丁。详见 [`docs/user-blockers.md`](docs/user-blockers.md)。
 
 ## 参考
