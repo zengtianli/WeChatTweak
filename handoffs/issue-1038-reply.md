@@ -19,12 +19,18 @@
 
 `E` = `parseRevokeXML` 入口。**两个补丁点的距离 `0x794` 跨构建号恒定**，而 `tools/locate_revoke.py` 的定位签名本来就同时要求这两处特征成立——也就是说它扫出静默点时，keeptip 点已经确定了，只是之前脚本没把它打印出来。现在一次输出两个 target：
 
+所以现在两条路都能走，**任何能打静默补丁的 4.x 构建号都能打 keeptip，不用等我收录**：
+
 ```bash
-python3 tools/locate_revoke.py            # 只打印，可直接粘进 config.json
-python3 tools/locate_revoke.py --append   # 直接追加进本仓库 config.json
-swift build -c release
+# 路 1：工具自己扫签名算补丁点（不改 config.json）
+sudo .build/release/wechattweak patch --variant keeptip --auto-locate
+
+# 路 2：先固化进 config.json 再打
+python3 tools/locate_revoke.py --append && swift build -c release
 sudo .build/release/wechattweak patch --variant keeptip
 ```
+
+顺带修了个会误伤你们的 bug：两个定位器原来只认原始的 `cbz`(E00F0034)，**已经打过静默补丁的机器会报「未命中签名」**——而想换 keeptip 的人几乎都打过静默。现在两种字节都认。
 
 **两点需要说清楚**：
 

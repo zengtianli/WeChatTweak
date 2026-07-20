@@ -38,6 +38,28 @@ struct Config: Decodable {
             case expected
         }
 
+        enum HexError: LocalizedError {
+            case invalidHex(String)
+            var errorDescription: String? {
+                switch self {
+                case let .invalidHex(hex): return "Invalid hex byte string: \(hex)"
+                }
+            }
+        }
+
+        /// Builds an entry programmatically (used by `--auto-locate`, which derives
+        /// the keeptip patch point from a code signature instead of config.json).
+        init(arch: Arch, addr: UInt64, asmHex: String, expectedHex: [String]) throws {
+            guard let asm = Data(hex: asmHex) else { throw HexError.invalidHex(asmHex) }
+            self.arch = arch
+            self.addr = addr
+            self.asm = asm
+            self.expected = try expectedHex.map {
+                guard let value = Data(hex: $0) else { throw HexError.invalidHex($0) }
+                return value
+            }
+        }
+
         init(from decoder: any Decoder) throws {
             let container: KeyedDecodingContainer<CodingKeys> = try decoder.container(keyedBy: CodingKeys.self)
             self.arch = try container.decode(Arch.self, forKey: .arch)
@@ -97,6 +119,12 @@ struct Config: Decodable {
             case identifier
             case entries
             case binary
+        }
+
+        init(identifier: String, entries: [Entry], binary: String?) {
+            self.identifier = identifier
+            self.entries = entries
+            self.binary = binary
         }
 
         init(from decoder: any Decoder) throws {

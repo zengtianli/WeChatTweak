@@ -70,6 +70,17 @@ flowchart TD
 |---|---|---|
 | `0x48a03b0`（`cbz w0`） | `E00F0034` → `7F000014`（改 `b`，跳过解析） | `→ E00F0034`（恢复/保持 `cbz`，让解析照跑；expected 兼容已静默补丁的 `7F000014`） |
 | `0x48a0b44`（`str x0,[x19,#0x168]`） | 不动 | `60B600F9` → `7FB600F9`（`str xzr`，把 newmsgid 写 0） |
+
+### 两个补丁点的固定关系（为什么 keeptip 不需要人工收录）
+
+`0x48a0b44 - 0x48a03b0 = 0x794`，这个差值跨构建号恒定，而定位签名本来就同时锚定这两处（`E+0x270` 是 `cbz w0`、`E+0xA04` 是 `str ?,[x19,#0x168]`）。**只要静默补丁点能被定位，keeptip 点就是确定的**——config.json 里那条 `revoke-keeptip` 属于可推导的冗余数据。
+
+早期只有 269136 收录了 keeptip target，其余构建号（269110/269111 从 issue #1038 评论手工收录时只带了静默点）用 `--variant keeptip` 会报「没有 keeptip 补丁点」，被误读成「这个版本做不了」。现已两头堵：
+
+- `patch --variant keeptip --auto-locate` 在 config 缺 target 时当场扫签名算出补丁点（`Sources/WeChatTweak/RevokeLocator.swift`）；
+- `tools/locate_revoke.py` 一次输出 `revoke` + `revoke-keeptip` 两个 target，`--append` 直接固化进 config。
+
+两个定位器在第一个锚点上都**同时接受 `E00F0034`(原始 `cbz`) 和 `7F000014`(已打静默补丁的 `b`)**。这点必须如此：想换 keeptip 的人绝大多数已经打过静默补丁，只认原始字节的话恰好把他们全挡在外面。
 | 「插入撤回提示」（下游） | 无输入，不触发 | 照常执行 |
 | 「按 newmsgid 删本地消息」（下游） | 无输入，不触发 | 按 id=0 查无，删不掉 |
 | 结果 | 消息留着、无提示 | 消息留着、有提示 |

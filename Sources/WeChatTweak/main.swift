@@ -45,9 +45,14 @@ extension Tweak {
 
         @Option(
             name: .shortAndLong,
-            help: "Anti-revoke variant: silent (keep message, no tip) | keeptip (keep message + still show the recall tip). keeptip is only available on WeChat 4.x builds that define a revoke-keeptip target."
+            help: "Anti-revoke variant: silent (keep message, no tip) | keeptip (keep message + still show the recall tip). keeptip needs a revoke-keeptip target in config.json, or --auto-locate to derive it."
         )
         var variant: PatchVariant = .silent
+
+        @Flag(
+            help: "If this build has no curated revoke-keeptip target, locate the patch point by scanning the binary for the revoke code signature instead of failing. The derived address still goes through the expected-byte check before any write."
+        )
+        var autoLocate: Bool = false
 
         mutating func run() async throws {
             print("------ Version ------")
@@ -65,7 +70,8 @@ extension Tweak {
             let patched = try Command.patch(
                 app: options.app,
                 config: config,
-                variant: variant
+                variant: variant,
+                autoLocate: autoLocate
             )
             print("Done!")
 

@@ -25,7 +25,8 @@ import struct
 import sys
 
 # --- 几何签名（跨版本不变）---
-CBZ_W0 = bytes.fromhex("E00F0034")        # E+0x270: cbz w0, SKIP（补丁点原字节）
+CBZ_W0_WORD = 0x34000FE0                  # E+0x270: cbz w0, SKIP（E00F0034，补丁点原字节）
+BRANCH_WORD = 0x1400007F                  # 同一位置已打静默补丁后的 b SKIP（7F000014）
 # E+0xA04: str <Xt>,[x19,#0x168]。原始 Xt=x0(60B600F9)；keeptip 变体把它改成 xzr(7FB600F9)。
 # 只认「[x19,#0x168] 的 str」这部分（掩掉目标寄存器 Rt=低 5 位），两种状态都命中。
 STR_NEWMSGID_MASKED = 0xF900B660          # str ?,[x19,#0x168]，Rt 位已清零
@@ -104,19 +105,18 @@ def is_stp_prologue(sl, e):
 def locate(sl):
     """在 arm64 切片里扫签名，返回所有命中的补丁点文件偏移列表。"""
     hits = []
-    idx = 0
     n = len(sl)
-    while True:
-        i = sl.find(CBZ_W0, idx)
-        if i == -1:
-            break
-        idx = i + 4
-        if i % 4 != 0:
-            continue  # 指令 4 字节对齐
+    # 锚点 1 同时认原始 `cbz w0` 和已打静默补丁的 `b`——否则已经跑过
+    # `--variant silent` 的机器（想换 keeptip 的正是这批人）会扫不到签名。
+    anchors = (CBZ_W0_WORD, BRANCH_WORD)
+    for i in range(0, n - 3, 4):
+        word = struct.unpack_from("<I", sl, i)[0]
+        if word not in anchors:
+            continue
         j = i + DELTA
         if j + 4 <= n:
-            word = struct.unpack("<I", sl[j:j + 4])[0]
-            if (word & STR_RT_MASK) == STR_NEWMSGID_MASKED:
+            str_word = struct.unpack_from("<I", sl, j)[0]
+            if (str_word & STR_RT_MASK) == STR_NEWMSGID_MASKED:
                 hits.append(i)
     return hits
 
