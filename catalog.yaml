@@ -15,5 +15,6 @@ depends_on:
   - apple/swift-argument-parser (>=1.6.0)
 
 lifecycle: frozen    # 2026-07-26 实测**未装机**:无 wechattweak-cli、WeChat.app 内无注入框架。构建过但没生效,要用先跑 cli install
+form: mac
 origin: third_party    # Sunnyyoung · 229 commits 我 26 · 微信 4.x 防撤回,上游 PR #1039 OPEN
 upstream: https://github.com/Sunnyyoung/WeChatTweak
