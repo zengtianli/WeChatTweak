@@ -14,7 +14,7 @@ key_scripts:
 depends_on:
   - apple/swift-argument-parser (>=1.6.0)
 
-lifecycle: archived    # 2026-08-10 归档:实测未装;防撤回 fork 唯一副本,上游 PR#1039 OPEN,源码保留
+lifecycle: active      # 2026-08-28 复活:微信更新到 4.1.13/269579,重新加防撤回补丁点(config.json 已收)
 form: mac
 origin: third_party    # Sunnyyoung · 229 commits 我 26 · 微信 4.x 防撤回,上游 PR #1039 OPEN
 upstream: https://github.com/Sunnyyoung/WeChatTweak
