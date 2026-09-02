@@ -6,8 +6,8 @@ locate_revoke.py — 自动定位微信 4.x 防撤回补丁点，为任意构建
 `parseRevokeXML` 入口 E 满足：E+0x270 处是 `cbz w0`、再往后固定距离处是
 `str x0,[x19,#newmsgid]`。扫这组签名（两个锚点同时命中且全片唯一）即可定位。
 微信每次重编译该函数会换一代签名（cbz 跳转距离 / newmsgid 字段偏移变），
-已知三代见 GENERATIONS（数据来源：fzlzjerry/wechat-antirecall patches.json 全量归纳，
-本机 269626 实测属第三代）。新构建若三代都不中 → 需人工抽切片复核并新增一代。
+已知各代见仓库根 signatures.json（SSOT；数据来源：fzlzjerry/wechat-antirecall patches.json 全量归纳，
+本机 269626 实测属第三代）。新构建若各代都不中 → 需人工抽切片复核并往 signatures.json 新增一代。
 silent 补丁点 VA = E+0x270，`cbz w0,SKIP` → `b SKIP`（等长，编码见各代）。
 keeptip 变体多一个点（就是签名的第二个锚点，白送），`str x0` → `str xzr` 清零 newmsgid。
 两个 target 一起输出：`revoke`(静默) 和 `revoke-keeptip`(留提示)。
@@ -27,7 +27,9 @@ import struct
 import sys
 
 # --- 几何签名（按「代」列表；同一代内跨构建号不变）---
-OFF_CBZ = 0x270                            # 补丁点相对函数入口 E 的偏移（三代恒定）
+# SSOT = 仓库根 signatures.json（Swift 侧由 tools/gen_signatures.py 生成同一张表）。
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+SIGNATURES_JSON = os.path.join(ROOT, "signatures.json")
 STR_RT_MASK = 0xFFFFFFE0                   # 掩掉 str 的 Rt（低 5 位）：原始 x0 与已打补丁的 xzr 都命中
 
 
@@ -36,19 +38,26 @@ def _le_word(hexbe):
     return struct.unpack("<I", bytes.fromhex(hexbe))[0]
 
 
-# 每代：cbz 原字节 / 静默写入字节(b) / cbz→str 距离 / str x0 原字节 / str xzr 写入字节 / 覆盖的微信版本
-GENERATIONS = [
-    {"name": "4.1.13 (269574+)",   "cbz": "40100034", "b": "82000014", "delta": 0x7A0, "str_x0": "60E600F9", "str_xzr": "7FE600F9", "field": 0x1C8},
-    {"name": "4.1.12 (269332–269341)", "cbz": "40100034", "b": "82000014", "delta": 0x7A0, "str_x0": "60CE00F9", "str_xzr": "7FCE00F9", "field": 0x198},
-    {"name": "4.1.10–4.1.11 (≤269136)", "cbz": "E00F0034", "b": "7F000014", "delta": 0x794, "str_x0": "60B600F9", "str_xzr": "7FB600F9", "field": 0x168},
-]
-for _g in GENERATIONS:
-    _g["cbz_word"] = _le_word(_g["cbz"])
-    _g["b_word"] = _le_word(_g["b"])
-    _g["str_masked"] = _le_word(_g["str_x0"]) & STR_RT_MASK
-    # 自洽：b 与 cbz 跳转目标一致（cbz imm19<<2 == b imm26<<2），str xzr 只差 Rt
-    assert ((_g["cbz_word"] >> 5) & 0x7FFFF) == (_g["b_word"] & 0x3FFFFFF), _g["name"]
-    assert (_le_word(_g["str_xzr"]) & STR_RT_MASK) == _g["str_masked"] and (_le_word(_g["str_xzr"]) & 0x1F) == 31, _g["name"]
+def load_generations(path=SIGNATURES_JSON):
+    doc = json.load(open(path, encoding="utf-8"))
+    gens = []
+    for g in doc["generations"]:
+        g = dict(g)
+        g["delta"] = int(g["delta"], 16)
+        g["field"] = int(g["field"], 16)
+        g["cbz_word"] = _le_word(g["cbz"])
+        g["b_word"] = _le_word(g["b"])
+        g["str_masked"] = _le_word(g["str_x0"]) & STR_RT_MASK
+        # 自洽：b 与 cbz 跳转目标一致（cbz imm19<<2 == b imm26<<2），str xzr 只差 Rt
+        assert ((g["cbz_word"] >> 5) & 0x7FFFF) == (g["b_word"] & 0x3FFFFFF), g["name"]
+        assert (_le_word(g["str_xzr"]) & STR_RT_MASK) == g["str_masked"] and (_le_word(g["str_xzr"]) & 0x1F) == 31, g["name"]
+        gens.append(g)
+    if not gens:
+        raise SystemExit("signatures.json 里没有任何一代签名")
+    return int(doc["off_cbz"], 16), gens
+
+
+OFF_CBZ, GENERATIONS = load_generations()
 
 # STP 序言（可选加固校验）：入口 E 的前三条应为 stp ...,[sp,#imm]
 # stp (signed offset / pre-index) 高位特征：位[31:22] 匹配 10_1010_01xx。这里只做弱校验。
@@ -166,7 +175,7 @@ def main():
     hits = locate(sl)
 
     if not hits:
-        raise SystemExit("未命中签名（已试 %d 代：%s）——该构建重编译了 parseRevokeXML，需人工抽切片复核并在 GENERATIONS 新增一代。"
+        raise SystemExit("未命中签名（已试 %d 代：%s）——该构建重编译了 parseRevokeXML，需人工抽切片复核并在 signatures.json 新增一代（再跑 tools/gen_signatures.py）。"
                          % (len(GENERATIONS), " / ".join(g["name"] for g in GENERATIONS)))
     if len(hits) > 1:
         vas = ["%s@%s" % (hex(fileoff_to_va(segs, h)), g["name"]) for h, g in hits]

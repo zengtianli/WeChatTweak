@@ -1,0 +1,36 @@
+{
+  "_comment": "parseRevokeXML 几何签名表（SSOT）。两个定位器都从这里派生：tools/locate_revoke.py 直接读；Swift 侧由 tools/gen_signatures.py 生成 Sources/WeChatTweak/Signatures.generated.swift（测试 SignaturesSyncTests 校验二者一致）。字节串按 config.json 口径大端书写。cbz 在入口 E+0x270；keeptip 点 = 静默点 + delta。新一代只改本文件并重跑 gen_signatures.py。",
+  "off_cbz": "0x270",
+  "generations": [
+    {
+      "name": "4.1.13 (269574+)",
+      "builds": "269574-269626",
+      "cbz": "40100034",
+      "b": "82000014",
+      "delta": "0x7a0",
+      "str_x0": "60E600F9",
+      "str_xzr": "7FE600F9",
+      "field": "0x1c8"
+    },
+    {
+      "name": "4.1.12 (269332-269341)",
+      "builds": "269332-269341",
+      "cbz": "40100034",
+      "b": "82000014",
+      "delta": "0x7a0",
+      "str_x0": "60CE00F9",
+      "str_xzr": "7FCE00F9",
+      "field": "0x198"
+    },
+    {
+      "name": "4.1.10-4.1.11 (<=269136)",
+      "builds": "268575-269136",
+      "cbz": "E00F0034",
+      "b": "7F000014",
+      "delta": "0x794",
+      "str_x0": "60B600F9",
+      "str_xzr": "7FB600F9",
+      "field": "0x168"
+    }
+  ]
+}

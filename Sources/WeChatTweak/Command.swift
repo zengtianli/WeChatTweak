@@ -20,7 +20,7 @@ struct Command {
                 return """
                     config.json has no `revoke-keeptip` patch point for WeChat build \(version) yet \
                     (this is missing data, not an unsupported build — the keeptip point is derivable \
-                    from the silent one, at +0x794).
+                    from the silent one by its generation's fixed delta).
                     Either let the tool find it itself:
                         sudo wechattweak patch --variant keeptip --auto-locate
                     or curate it into config.json first:
@@ -36,7 +36,14 @@ struct Command {
     static let keeptipRevokeIdentifier = "revoke-keeptip"
 
     static func version(app: URL) async throws -> String? {
-        try await Command.execute(command: "defaults read \(app.appendingPathComponent("Contents/Info.plist").path) CFBundleVersion")
+        try await Command.execute(command: "defaults read \(q(app.appendingPathComponent("Contents/Info.plist").path)) CFBundleVersion")
+    }
+
+    /// Shell-quote a path for the `do shell script` command line. Upstream interpolated
+    /// paths bare, so any `-a` path containing a space (e.g. a copy on an external
+    /// volume) split into two arguments.
+    static func q(_ path: String) -> String {
+        "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
     }
 
     static let defaultBinary = "Contents/MacOS/WeChat"
@@ -108,16 +115,16 @@ struct Command {
         // Otherwise the running app can hit `Code Signature Invalid` on the patched page.
         for relative in patchedBinaries where relative != Command.defaultBinary {
             let path = app.appendingPathComponent(relative).path
-            try await Command.execute(command: "codesign --force --sign - \(path)")
+            try await Command.execute(command: "codesign --force --sign - \(q(path))")
         }
-        try await Command.execute(command: "codesign --remove-sign \(app.path)")
-        try await Command.execute(command: "codesign --force --deep --sign - \(app.path)")
+        try await Command.execute(command: "codesign --remove-sign \(q(app.path))")
+        try await Command.execute(command: "codesign --force --deep --sign - \(q(app.path))")
         // Quarantine strip is cosmetic and comes after signing succeeded. WeChat ships
         // read-only nested files (e.g. WeChatAppEx's gpu_shader_cache.bin, mode 0444)
         // that make `xattr -cr` return EACCES; that must not turn a completed, signed
         // patch into an "Error:" exit. Warn instead — the bundle itself carries no quarantine.
         do {
-            try await Command.execute(command: "xattr -cr \(app.path)")
+            try await Command.execute(command: "xattr -cr \(q(app.path))")
         } catch {
             print("[warn] xattr -cr failed on some nested file(s); patch + resign already completed. Detail: \(error.localizedDescription)")
         }
@@ -125,7 +132,12 @@ struct Command {
 
     @discardableResult
     private static func execute(command: String) async throws -> String? {
-        guard let script = NSAppleScript(source: "do shell script \"\(command)\"") else {
+        // The command is embedded in an AppleScript string literal: escape backslashes
+        // and double quotes so the shell single-quoting above survives intact.
+        let literal = command
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "\"", with: "\\\"")
+        guard let script = NSAppleScript(source: "do shell script \"\(literal)\"") else {
             throw Error.executing(
                 command: command,
                 error: ["error": "Create script failed."]

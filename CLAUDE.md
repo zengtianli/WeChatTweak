@@ -38,6 +38,14 @@ make build                        # 通用二进制 + cp 到 ./wechattweak
 sudo .build/release/wechattweak patch
 
 make clean                        # rm -rf .build && rm -f wechattweak
+
+# 测试（11 例：定位器/Patcher/签名表同步）
+swift test
+
+# 微信发版后的补丁点补齐，按顺序：同步参考实现 → 自己定位 → 人工
+python3 tools/sync_ref.py --dry-run && python3 tools/sync_ref.py    # 从 fzlzjerry patches.json 搬 revoke/revoke-tip
+python3 tools/locate_revoke.py --append                             # 参考实现还没收录时，按 signatures.json 各代签名扫
+python3 tools/gen_signatures.py [--check]                           # 改了 signatures.json 后重新生成 Swift 表
 ```
 
 子命令只有两个：`versions`、`patch`（见 `Sources/WeChatTweak/main.swift`）。
@@ -50,7 +58,14 @@ Sources/WeChatTweak/
   Command.swift   # 高层编排：读版本、逐 target 打补丁、重签名（先签 dylib 再 --deep 签整包）
   Config.swift    # config.json 解码（version/targets/entries；arch/addr/asm/expected 十六进制）
   Patcher.swift   # Mach-O 定位 VA→文件偏移 + 原始字节校验 + 等长写入
+  RevokeLocator.swift            # --auto-locate：按签名代扫 dylib
+  Signatures.generated.swift     # 生成物，禁手改（源 = signatures.json）
+Tests/WeChatTweakTests/          # XCTest：合成 Mach-O fixture + 定位器/Patcher/签名同步
 config.json       # 补丁数据 SSOT（每个构建号一组 targets/entries）
+signatures.json   # 几何签名各代 SSOT（Python 定位器直接读，Swift 由 tools/gen_signatures.py 派生）
+tools/sync_ref.py       # 从 fzlzjerry/wechat-antirecall 同步补丁点（只搬 revoke 两类，本机构建逐字节校验）
+tools/locate_revoke.py  # 自主定位器（参考实现落后时的兜底）
+tools/_archive/         # hunt_delete.py：群聊留提示的 lldb 调查，已放弃
 Makefile          # swift build 通用二进制
 ```
 
@@ -59,8 +74,8 @@ Makefile          # swift build 通用二进制
 - **打补丁必先退出微信**（`pkill -x WeChat`）：运行中打补丁触发签名失效崩溃。
 - **补丁是原地等长替换**：`asm` 字节数必须等于被替换指令长度（防撤回 4 字节 `cbz`→`b`），不改二进制布局。
 - **写入前必过 `expected` 字节校验**：打错微信版本会 `expectedMismatch` 报错拒写。新增版本时 `expected` 填目标处原始字节（可列多个变体，如 pristine + 已打补丁）。
-- **新增微信版本 = 改 `config.json`**（不改 Swift 代码）：第一动作 `python3 tools/locate_revoke.py --append && swift build -c release`。定位器按「代」扫签名（三代内置，见 README「新增一个版本」的代表），同代热修直接命中；三代都不中才是真重编译，先看 fzlzjerry/wechat-antirecall `patches.json` 有没有相邻构建号的条目再人工逆向，新一代必须**同时**加进 `tools/locate_revoke.py` GENERATIONS 与 `RevokeLocator.swift` signatures。加完 → 重编译 → 实测撤回。
-- **微信自动更新会静默还原补丁**（2026-06-26、08-28、09-01 三次实证）：用户报「防撤回没了」第一动作查 `CFBundleVersion` 是否变了，别先怀疑补丁逻辑。4.1.13 起 Sparkle 以当前用户身份写包，`/Applications/WeChat.app` 归用户所有，**打补丁不再需要 sudo**。
+- **新增微信版本 = 改 `config.json`**（不改 Swift 代码）：第一动作 `python3 tools/sync_ref.py`（参考实现多半已收录），没收录再 `python3 tools/locate_revoke.py --append`，然后 `swift build -c release`。定位器按「代」扫签名（三代内置，见 README「新增一个版本」的代表），同代热修直接命中；三代都不中才是真重编译，先看 fzlzjerry/wechat-antirecall `patches.json` 有没有相邻构建号的条目再人工逆向，新一代只加进 `signatures.json` 一处，跑 `tools/gen_signatures.py` 派生 Swift 表（`swift test` 拦漏生成）。加完 → 重编译 → 实测撤回。
+- **微信自动更新会静默还原补丁**（2026-06-26、08-28、09-01 三次实证）：用户报「防撤回没了」第一动作查 `CFBundleVersion` 是否变了，别先怀疑补丁逻辑。2026-09-02 已 `defaults write com.tencent.xinWeChat SUAutomaticallyUpdate/SUEnableAutomaticChecks -bool NO`（Sparkle 原本每 300 秒查一次），**是否真挡得住要等下一次微信发版才知道**；挡不住就移植 fzlzjerry 的 `update` 补丁目标。4.1.13 起 Sparkle 以当前用户身份写包，`/Applications/WeChat.app` 归用户所有，**打补丁不再需要 sudo**。
 - **验证只能靠实收撤回**：防撤回是否生效，必须找人发消息再撤回实测（README 已强调），符号被剥离、无法静态确认。
 - **微信 4.x 只做了防撤回**：多开需整包复制 App，阻止更新的补丁点尚未纳入本 fork。
 - **重签名逻辑在 Command.swift**：改补丁流程注意先单独签被改的 dylib，再 `--deep` 签整个 App。

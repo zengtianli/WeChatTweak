@@ -12,8 +12,9 @@
 //      E+0x270+delta   == `str <Xt>,[x19,#newmsgid]`      ← keeptip patch point
 //  WeChat recompiles this function every few releases, which changes the cbz
 //  displacement / the newmsgid field offset / delta — one "generation" each.
-//  All known generations are tabulated below (derived from the full
-//  fzlzjerry/wechat-antirecall patches.json). Both anchors must hold and the hit
+//  All known generations are tabulated in `signatures.json` (repo root, the SSOT;
+//  derived from the full fzlzjerry/wechat-antirecall patches.json) and generated
+//  into `Signatures.generated.swift` by tools/gen_signatures.py. Both anchors must hold and the hit
 //  must be unique across every generation.
 //
 
@@ -42,9 +43,12 @@ struct RevokeLocator {
         }
     }
 
-    /// One signature generation (see file header).
-    struct Signature {
+    /// One signature generation (see file header). The table itself lives in
+    /// `signatures.json` (repo root) and is generated into `Signatures.generated.swift`.
+    struct Signature: Equatable {
         let name: String
+        /// Human-readable build range this generation was observed on.
+        let builds: String
         /// Pristine `cbz w0, SKIP` bytes at the silent patch point (config.json spelling, big-endian hex).
         let cbzHex: String
         /// `b SKIP` the silent variant writes there.
@@ -54,6 +58,8 @@ struct RevokeLocator {
         /// `str x0,[x19,#field]` → `str xzr,[x19,#field]`
         let strX0Hex: String
         let strXzrHex: String
+        /// newmsgid field offset inside the parser's result struct (informational).
+        let field: UInt64
 
         var cbzWord: UInt32 { Signature.word(cbzHex) }
         var branchWord: UInt32 { Signature.word(branchHex) }
@@ -72,11 +78,6 @@ struct RevokeLocator {
         }
     }
 
-    static let signatures: [Signature] = [
-        Signature(name: "4.1.13 (269574+)", cbzHex: "40100034", branchHex: "82000014", delta: 0x7A0, strX0Hex: "60E600F9", strXzrHex: "7FE600F9"),
-        Signature(name: "4.1.12 (269332-269341)", cbzHex: "40100034", branchHex: "82000014", delta: 0x7A0, strX0Hex: "60CE00F9", strXzrHex: "7FCE00F9"),
-        Signature(name: "4.1.10-4.1.11 (<=269136)", cbzHex: "E00F0034", branchHex: "7F000014", delta: 0x794, strX0Hex: "60B600F9", strXzrHex: "7FB600F9"),
-    ]
     static let strRtMask: UInt32 = 0xFFFF_FFE0
 
     struct Result {

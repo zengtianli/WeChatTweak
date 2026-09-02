@@ -44,4 +44,4 @@ fork：https://github.com/zengtianli/WeChatTweak
 ## 未尽事项
 
 - 等 269110/269111 用户回报实测结果 → 把 README 里「推导未验证」改成实测结论。
-- 群聊 keeptip 仍卡在下游删除调用的动态定位（见 `handoffs/group-delete-hunt.md`）。
+- 群聊 keeptip 仍卡在下游删除调用的动态定位（见 `handoffs/_archive/2026-09-02-group-delete-hunt.md`，已放弃）。
