@@ -6,12 +6,15 @@
 //  build-invariant code signature, so a build that is not yet curated in
 //  config.json can still be patched with `--auto-locate`.
 //
-//  The signature is the same one `tools/locate_revoke.py` uses: the entry `E` of
+//  The signatures are the same ones `tools/locate_revoke.py` uses: the entry `E` of
 //  `parseRevokeXML` satisfies
-//      E+0x270 == `cbz w0, SKIP`               (E00F0034)  ← silent patch point
-//      E+0xA04 == `str <Xt>,[x19,#0x168]`      (60B600F9)  ← keeptip patch point
-//  Both anchors must hold and the hit must be unique, which is what makes the
-//  keeptip address derivable rather than hand-maintained: keeptip = silent + 0x794.
+//      E+0x270         == `cbz w0, SKIP`                  ← silent patch point
+//      E+0x270+delta   == `str <Xt>,[x19,#newmsgid]`      ← keeptip patch point
+//  WeChat recompiles this function every few releases, which changes the cbz
+//  displacement / the newmsgid field offset / delta — one "generation" each.
+//  All known generations are tabulated below (derived from the full
+//  fzlzjerry/wechat-antirecall patches.json). Both anchors must hold and the hit
+//  must be unique across every generation.
 //
 
 import Foundation
@@ -31,7 +34,7 @@ struct RevokeLocator {
             case .noArm64Slice:
                 return "auto-locate: no arm64 slice in this binary"
             case .noHit:
-                return "auto-locate: signature not found — this build changed the parseRevokeXML layout. Locate the patch point manually (see README) instead of --auto-locate."
+                return "auto-locate: signature not found — this build recompiled parseRevokeXML into a new generation none of the known signatures match. Locate the patch point manually (see README) instead of --auto-locate."
             case let .ambiguous(count, vas):
                 let list = vas.map { String(format: "0x%llx", $0) }.joined(separator: ", ")
                 return "auto-locate: signature matched \(count) sites (\(list)) — ambiguous, refusing to guess. Locate manually (see README)."
@@ -39,25 +42,48 @@ struct RevokeLocator {
         }
     }
 
-    /// `cbz w0, SKIP` — the silent patch point's pristine bytes (E00F0034, little-endian word).
-    static let cbzW0Word: UInt32 = 0x3400_0FE0
-    /// `b SKIP` — what the silent variant writes there (7F000014).
-    static let branchWord: UInt32 = 0x1400_007F
-    static let branchHex = "7F000014"
-    /// Distance from the silent patch point to the newmsgid store (keeptip point).
-    static let delta: UInt64 = 0x794
-    /// `str <Xt>,[x19,#0x168]` with the Rt field masked off, so both the pristine
-    /// `str x0` and an already-applied `str xzr` match.
-    static let strNewmsgidMasked: UInt32 = 0xF900B660
+    /// One signature generation (see file header).
+    struct Signature {
+        let name: String
+        /// Pristine `cbz w0, SKIP` bytes at the silent patch point (config.json spelling, big-endian hex).
+        let cbzHex: String
+        /// `b SKIP` the silent variant writes there.
+        let branchHex: String
+        /// Distance from the silent patch point to the newmsgid store (keeptip point).
+        let delta: UInt64
+        /// `str x0,[x19,#field]` → `str xzr,[x19,#field]`
+        let strX0Hex: String
+        let strXzrHex: String
+
+        var cbzWord: UInt32 { Signature.word(cbzHex) }
+        var branchWord: UInt32 { Signature.word(branchHex) }
+        /// `str` with the Rt field masked off, so both pristine `str x0` and an applied `str xzr` match.
+        var strMasked: UInt32 { Signature.word(strX0Hex) & RevokeLocator.strRtMask }
+
+        static func word(_ hex: String) -> UInt32 {
+            var bytes: [UInt8] = []
+            var idx = hex.startIndex
+            while idx < hex.endIndex {
+                let next = hex.index(idx, offsetBy: 2)
+                bytes.append(UInt8(hex[idx..<next], radix: 16)!)
+                idx = next
+            }
+            return bytes.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).littleEndian }
+        }
+    }
+
+    static let signatures: [Signature] = [
+        Signature(name: "4.1.13 (269574+)", cbzHex: "40100034", branchHex: "82000014", delta: 0x7A0, strX0Hex: "60E600F9", strXzrHex: "7FE600F9"),
+        Signature(name: "4.1.12 (269332-269341)", cbzHex: "40100034", branchHex: "82000014", delta: 0x7A0, strX0Hex: "60CE00F9", strXzrHex: "7FCE00F9"),
+        Signature(name: "4.1.10-4.1.11 (<=269136)", cbzHex: "E00F0034", branchHex: "7F000014", delta: 0x794, strX0Hex: "60B600F9", strXzrHex: "7FB600F9"),
+    ]
     static let strRtMask: UInt32 = 0xFFFF_FFE0
-    /// `str x0,[x19,#0x168]` → `str xzr,[x19,#0x168]`
-    static let strX0Hex = "60B600F9"
-    static let strXzrHex = "7FB600F9"
 
     struct Result {
-        /// VA of `cbz w0` (silent patch point). keeptip point is `silentVA + delta`.
+        /// VA of `cbz w0` (silent patch point). keeptip point is `silentVA + signature.delta`.
         let silentVA: UInt64
-        var keeptipVA: UInt64 { silentVA + RevokeLocator.delta }
+        let signature: Signature
+        var keeptipVA: UInt64 { silentVA + signature.delta }
     }
 
     /// Scans `binary` for the revoke signature and returns the patch-point VAs.
@@ -66,21 +92,26 @@ struct RevokeLocator {
         let slice = try arm64Slice(data)
         let segments = try parseSegments(slice)
 
-        var hits: [Int] = []
+        // Precompute anchor words once; the scan is a single pass over ~170MB.
+        let anchors: [(cbz: UInt32, branch: UInt32, delta: Int, strMasked: UInt32, sig: Signature)] =
+            signatures.map { ($0.cbzWord, $0.branchWord, Int($0.delta), $0.strMasked, $0) }
+
+        var hits: [(offset: Int, sig: Signature)] = []
         slice.withUnsafeBytes { (raw: UnsafeRawBufferPointer) in
             let count = raw.count
             var offset = 0
             while offset + 4 <= count {
                 let word = raw.loadUnaligned(fromByteOffset: offset, as: UInt32.self).littleEndian
-                // Anchor 1 accepts both the pristine `cbz w0` and an already-applied
-                // silent patch (`b`), so a machine that ran --variant silent can still
-                // be located and switched to keeptip.
-                if word == cbzW0Word || word == branchWord {
-                    let strOffset = offset + Int(delta)
+                for a in anchors {
+                    // Anchor 1 accepts both the pristine `cbz w0` and an already-applied
+                    // silent patch (`b`), so a machine that ran --variant silent can still
+                    // be located and switched to keeptip.
+                    guard word == a.cbz || word == a.branch else { continue }
+                    let strOffset = offset + a.delta
                     if strOffset + 4 <= count {
                         let str = raw.loadUnaligned(fromByteOffset: strOffset, as: UInt32.self).littleEndian
-                        if str & strRtMask == strNewmsgidMasked {
-                            hits.append(offset)
+                        if str & strRtMask == a.strMasked {
+                            hits.append((offset, a.sig))
                         }
                     }
                 }
@@ -89,11 +120,11 @@ struct RevokeLocator {
         }
 
         guard !hits.isEmpty else { throw Error.noHit }
-        let vas = hits.compactMap { fileOffsetToVA(segments, UInt64($0)) }
+        let vas = hits.compactMap { fileOffsetToVA(segments, UInt64($0.offset)) }
         guard hits.count == 1, let va = vas.first else {
             throw Error.ambiguous(count: hits.count, vas: vas)
         }
-        return Result(silentVA: va)
+        return Result(silentVA: va, signature: hits[0].sig)
     }
 
     /// Builds the `revoke-keeptip` entries for a located build: restore the `cbz`
@@ -102,12 +133,12 @@ struct RevokeLocator {
         [
             try Config.Entry(arch: .arm64,
                              addr: result.silentVA,
-                             asmHex: "E00F0034",
-                             expectedHex: ["E00F0034", branchHex]),
+                             asmHex: result.signature.cbzHex,
+                             expectedHex: [result.signature.cbzHex, result.signature.branchHex]),
             try Config.Entry(arch: .arm64,
                              addr: result.keeptipVA,
-                             asmHex: strXzrHex,
-                             expectedHex: [strX0Hex]),
+                             asmHex: result.signature.strXzrHex,
+                             expectedHex: [result.signature.strX0Hex]),
         ]
     }
 

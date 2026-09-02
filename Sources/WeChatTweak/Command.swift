@@ -90,8 +90,8 @@ struct Command {
         let binary = app.appendingPathComponent(relative)
         let hit = try RevokeLocator.locate(binary: binary)
         print("------ Auto-locate ------")
-        print(String(format: "[arm64] signature hit — silent VA=0x%llx, keeptip VA=0x%llx (+0x%llx)",
-                     hit.silentVA, hit.keeptipVA, RevokeLocator.delta))
+        print(String(format: "[arm64] signature hit (%@) — silent VA=0x%llx, keeptip VA=0x%llx (+0x%llx)",
+                     hit.signature.name, hit.silentVA, hit.keeptipVA, hit.signature.delta))
         if let curated = config.targets.first(where: { $0.identifier == Command.silentRevokeIdentifier })?.entries.first,
            curated.addr != hit.silentVA {
             print(String(format: "[arm64] warning: config.json lists silent VA=0x%llx but the signature hit 0x%llx",
@@ -112,7 +112,15 @@ struct Command {
         }
         try await Command.execute(command: "codesign --remove-sign \(app.path)")
         try await Command.execute(command: "codesign --force --deep --sign - \(app.path)")
-        try await Command.execute(command: "xattr -cr \(app.path)")
+        // Quarantine strip is cosmetic and comes after signing succeeded. WeChat ships
+        // read-only nested files (e.g. WeChatAppEx's gpu_shader_cache.bin, mode 0444)
+        // that make `xattr -cr` return EACCES; that must not turn a completed, signed
+        // patch into an "Error:" exit. Warn instead — the bundle itself carries no quarantine.
+        do {
+            try await Command.execute(command: "xattr -cr \(app.path)")
+        } catch {
+            print("[warn] xattr -cr failed on some nested file(s); patch + resign already completed. Detail: \(error.localizedDescription)")
+        }
     }
 
     @discardableResult

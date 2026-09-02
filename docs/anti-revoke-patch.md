@@ -80,7 +80,7 @@ flowchart TD
 - `patch --variant keeptip --auto-locate` 在 config 缺 target 时当场扫签名算出补丁点（`Sources/WeChatTweak/RevokeLocator.swift`）；
 - `tools/locate_revoke.py` 一次输出 `revoke` + `revoke-keeptip` 两个 target，`--append` 直接固化进 config。
 
-两个定位器在第一个锚点上都**同时接受 `E00F0034`(原始 `cbz`) 和 `7F000014`(已打静默补丁的 `b`)**。这点必须如此：想换 keeptip 的人绝大多数已经打过静默补丁，只认原始字节的话恰好把他们全挡在外面。
+两个定位器在第一个锚点上都**同时接受原始 `cbz` 和已打静默补丁的 `b`**（编码按代：4.1.10/11 `E00F0034`/`7F000014`，4.1.12+ `40100034`/`82000014`；2026-09-01 起两份定位器都内置三代签名表，见 README「新增一个版本」）。这点必须如此：想换 keeptip 的人绝大多数已经打过静默补丁，只认原始字节的话恰好把他们全挡在外面。
 | 「插入撤回提示」（下游） | 无输入，不触发 | 照常执行 |
 | 「按 newmsgid 删本地消息」（下游） | 无输入，不触发 | 按 id=0 查无，删不掉 |
 | 结果 | 消息留着、无提示 | 消息留着、有提示 |

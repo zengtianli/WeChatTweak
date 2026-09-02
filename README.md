@@ -10,7 +10,7 @@
 
 ## 功能
 
-| 功能 | 说明 | 微信 3.8.x | 微信 4.x (268880 / 269136) |
+| 功能 | 说明 | 微信 3.8.x | 微信 4.x (268880 → 269626) |
 | --- | --- | :---: | :---: |
 | **防撤回（静默变体）** | 别人撤回的消息原样留在聊天里，不弹提示 | ✓ | ✓（当前发布版） |
 | **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ⚠️（`--variant keeptip`：**私聊**有提示；**群聊**仍静默无提示） |
@@ -31,6 +31,8 @@
 
 | 构建号 | 微信版本 | 防撤回 |
 | --- | --- | :---: |
+| 269626 | 4.1.13 | ✓ |
+| 269579 | 4.1.13 | ✓ |
 | 269136 | 4.1.11 | ✓ |
 | 268880 | 4.1.10 | ✓ |
 | 34371 / 32288 / 32281 / 31960 / 31927 | 3.8.x | ✓ |
@@ -63,7 +65,7 @@ sudo .build/release/wechattweak patch --variant keeptip
 # 6. 重新打开微信
 ```
 
-> **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 需要一个 `revoke-keeptip` 补丁点。已收录：269136（实机实测）、269110/269111（由几何关系 `+0x794` 推导，**未经实机验证**）。**没收录的 4.x 构建号不用等我加**，两条路二选一：
+> **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 需要一个 `revoke-keeptip` 补丁点。已收录：269136（实机实测）、269579/269626（4.1.13，keeptip 点由同代签名 `+0x7a0` 定位）、269110/269111（由几何关系 `+0x794` 推导，**未经实机验证**）。**没收录的 4.x 构建号不用等我加**，两条路二选一：
 
 ```bash
 # 路 1：让工具自己扫签名算出补丁点（不改 config.json）
@@ -103,7 +105,7 @@ wechattweak patch
 
 `cbz` 和 `b` 都是 4 字节定长指令、目标偏移相同，所以这是一次**原地等长替换**，只翻 4 个字节，不改动二进制布局。因为没有新增「显示提示」的代码、只是删掉了删除动作，所以是**静默**防撤回：消息留下、且什么提示都不弹。
 
-补丁点通过 `parseRevokeXML` 的几何特征在整个 arm64 切片里唯一定位（入口 `stp` 序言 + `entry+0x270` 的 `cbz w0` + `entry+0xA04` 的 `str x0,[x19,#0x168]`），并经反汇编与原始字节逐一核对。逆向方法参考了 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall)。
+补丁点通过 `parseRevokeXML` 的几何特征在整个 arm64 切片里唯一定位（入口 `stp` 序言 + `entry+0x270` 的 `cbz w0` + 固定距离外的 `str x0,[x19,#newmsgid]`；具体编码分「代」，见[新增一个版本](#新增一个版本)），并经反汇编与原始字节逐一核对。逆向方法参考了 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall)。
 
 ## 为什么当前发布版是「静默」的
 
@@ -156,9 +158,17 @@ python3 tools/locate_revoke.py -a /path/to/WeChat.app
 python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 ```
 
-定位器扫的是这组不变签名并要求**唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`（`E00F0034`）、`E+0xA04` 是 `str <Xt>,[x19,#0x168]`（原始 `60B600F9`；已装 keeptip 变体则为 `7FB600F9`，两者都认）。
+定位器扫的是这组签名并要求**全片唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`、`E+0x270+delta` 是 `str <Xt>,[x19,#newmsgid]`（原始 `str x0`；已装 keeptip 变体则为 `str xzr`，两者都认）。
 
-签名的**两个锚点正好就是两个变体的补丁点**，所以定位器一次输出 `revoke` 和 `revoke-keeptip` 两个 target：
+微信每隔几个版本会重编译这个函数，`cbz` 跳转距离、`newmsgid` 字段偏移、两点距离 `delta` 会一起变——每变一次算一「代」。**已知三代**（由 fzlzjerry/wechat-antirecall 全量 `patches.json` 归纳，定位器两份实现都内置这张表；**新构建先跑定位器，三代都不中才需要人工**）：
+
+| 代 | 微信构建 | `cbz` 原字节 → 静默写入 | newmsgid 字段 | keeptip 点 = 静默点 + | `str x0` → `str xzr` |
+|---|---|---|---|---|---|
+| 三 | 269574 ~ 269626（4.1.13） | `40100034` → `82000014` | `[x19,#0x1c8]` | `0x7a0` | `60E600F9` → `7FE600F9` |
+| 二 | 269332 ~ 269341（4.1.12） | `40100034` → `82000014` | `[x19,#0x198]` | `0x7a0` | `60CE00F9` → `7FCE00F9` |
+| 一 | ≤ 269136（4.1.10 / 4.1.11） | `E00F0034` → `7F000014` | `[x19,#0x168]` | `0x794` | `60B600F9` → `7FB600F9` |
+
+签名的**两个锚点正好就是两个变体的补丁点**，所以定位器一次输出 `revoke` 和 `revoke-keeptip` 两个 target（以第一代为例）：
 
 | 变体 | 补丁点 VA | `expected` | `asm` |
 |---|---|---|---|
@@ -166,18 +176,18 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 | `revoke-keeptip` | `E+0x270`（还原 cbz） | `E00F0034` 或 `7F000014` | `E00F0034` |
 | `revoke-keeptip` | `E+0xA04` | `60B600F9` | `7FB600F9` |
 
-即 keeptip 点 = 静默点 `+ 0x794`，跨构建号恒定。这条推导也内建进了 CLI：`patch --variant keeptip --auto-locate` 在 config 缺 `revoke-keeptip` 时直接扫同一组签名算出补丁点（Swift 实现见 `Sources/WeChatTweak/RevokeLocator.swift`），所以**「这个构建号没收录 keeptip」不再是个需要等人补数据的死路**。
+即 keeptip 点 = 静默点 `+ delta`，同一代内跨构建号恒定。这条推导也内建进了 CLI：`patch --variant keeptip --auto-locate` 在 config 缺 `revoke-keeptip` 时直接扫同一组签名算出补丁点（Swift 实现见 `Sources/WeChatTweak/RevokeLocator.swift`），所以**「这个构建号没收录 keeptip」不再是个需要等人补数据的死路**。
 
-两个定位器（Python 的和 CLI 内建的）在第一个锚点上**同时接受原始 `cbz`(E00F0034) 和已打静默补丁的 `b`(7F000014)**——否则跑过 `--variant silent` 的机器（想换 keeptip 的正是这批人）会扫不到签名。
+两个定位器（Python 的和 CLI 内建的）在第一个锚点上**同时接受原始 `cbz` 和已打静默补丁的 `b`**（每代各自的编码）——否则跑过 `--variant silent` 的机器（想换 keeptip 的正是这批人）会扫不到签名。
 
 拿到条目后：`swift build -c release` → `wechattweak versions` 确认 → 打补丁后实测撤回。`versions`/`patch` **默认就读本仓库的本地 `config.json`**（先 cwd 再从可执行文件向上找），所以 `--append` 加进去的版本直接生效，不用再 `-c`；本地找不到才回退远程。
 
-> 若定位器报「命中 0 处」或「命中多处」，说明该构建改了 `parseRevokeXML` 布局，需人工用 `lipo -thin arm64` 抽切片后复核几何特征。手工兜底：补丁点 = 入口 `E + 0x270`，原字节 `E00F0034` → 写 `7F000014`。
+> 若定位器报「命中 0 处」或「命中多处」，说明该构建把 `parseRevokeXML` 重编译成了新的一代，需人工用 `lipo -thin arm64` 抽切片后复核几何特征，把新一代的五个参数加进 `tools/locate_revoke.py` 的 `GENERATIONS` 和 `RevokeLocator.swift` 的 `signatures`（两处必须同步）。最省力的线索是 fzlzjerry/wechat-antirecall 的 `patches.json`：它若已收录相邻构建号，新一代的编码可直接从那一条读出（2026-08-28 的 269579 就是这么定的）。手工兜底：补丁点 = 入口 `E + 0x270`，把那条 `cbz w0` 等长改成同目标的 `b`。
 
 ## 常见问题
 
 - **`Unsupported version`**：你的构建号不在 `config.json`。跑 `python3 tools/locate_revoke.py --append` 自动加上再 `swift build`。若加了本地条目仍报错，确认用的是本仓库编译出的二进制（默认已本地优先读 config，不必 `-c`）。
-- **`config.json has no revoke-keeptip patch point for WeChat build XXXXXX yet`**：**不是你的版本做不了**，是这个构建号的 keeptip 补丁点还没被收录（早期条目从 issue 评论手工收录，只带了静默那一个点）。keeptip 点 = 静默点 `+0x794`，可自动算出：加 `--auto-locate` 让工具当场扫，或先 `python3 tools/locate_revoke.py --append && swift build -c release` 固化进 config。
+- **`config.json has no revoke-keeptip patch point for WeChat build XXXXXX yet`**：**不是你的版本做不了**，是这个构建号的 keeptip 补丁点还没被收录（早期条目从 issue 评论手工收录，只带了静默那一个点）。keeptip 点 = 静默点 `+ delta`（按代 `0x794` / `0x7a0`），可自动算出：加 `--auto-locate` 让工具当场扫，或先 `python3 tools/locate_revoke.py --append && swift build -c release` 固化进 config。
 - **`sudo` 都报 `You don't have permission to save "wechat.dylib"`**：macOS 14+ 的 **App Management** 保护在拦（不认 `sudo`）。系统设置 → 隐私与安全性 → **App 管理**，打开你所用终端（Terminal/iTerm/VS Code）的开关，退出重开终端再打补丁。详见 [`docs/user-blockers.md`](docs/user-blockers.md)。
 
 ## 参考

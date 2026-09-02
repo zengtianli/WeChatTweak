@@ -59,7 +59,8 @@ Makefile          # swift build 通用二进制
 - **打补丁必先退出微信**（`pkill -x WeChat`）：运行中打补丁触发签名失效崩溃。
 - **补丁是原地等长替换**：`asm` 字节数必须等于被替换指令长度（防撤回 4 字节 `cbz`→`b`），不改二进制布局。
 - **写入前必过 `expected` 字节校验**：打错微信版本会 `expectedMismatch` 报错拒写。新增版本时 `expected` 填目标处原始字节（可列多个变体，如 pristine + 已打补丁）。
-- **新增微信版本 = 改 `config.json`**（不改 Swift 代码）：流程见 README「新增一个版本」——lipo 抽 arm64 切片 → 按 `parseRevokeXML` 几何特征定位补丁点 → 加 config 条目 → 重编译 → 实测撤回。
+- **新增微信版本 = 改 `config.json`**（不改 Swift 代码）：第一动作 `python3 tools/locate_revoke.py --append && swift build -c release`。定位器按「代」扫签名（三代内置，见 README「新增一个版本」的代表），同代热修直接命中；三代都不中才是真重编译，先看 fzlzjerry/wechat-antirecall `patches.json` 有没有相邻构建号的条目再人工逆向，新一代必须**同时**加进 `tools/locate_revoke.py` GENERATIONS 与 `RevokeLocator.swift` signatures。加完 → 重编译 → 实测撤回。
+- **微信自动更新会静默还原补丁**（2026-06-26、08-28、09-01 三次实证）：用户报「防撤回没了」第一动作查 `CFBundleVersion` 是否变了，别先怀疑补丁逻辑。4.1.13 起 Sparkle 以当前用户身份写包，`/Applications/WeChat.app` 归用户所有，**打补丁不再需要 sudo**。
 - **验证只能靠实收撤回**：防撤回是否生效，必须找人发消息再撤回实测（README 已强调），符号被剥离、无法静态确认。
 - **微信 4.x 只做了防撤回**：多开需整包复制 App，阻止更新的补丁点尚未纳入本 fork。
 - **重签名逻辑在 Command.swift**：改补丁流程注意先单独签被改的 dylib，再 `--deep` 签整个 App。
