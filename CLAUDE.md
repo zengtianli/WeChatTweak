@@ -78,4 +78,6 @@ Makefile          # swift build 通用二进制
 - **微信自动更新会静默还原补丁**（2026-06-26、08-28、09-01 三次实证）：用户报「防撤回没了」第一动作查 `CFBundleVersion` 是否变了，别先怀疑补丁逻辑。2026-09-02 已 `defaults write com.tencent.xinWeChat SUAutomaticallyUpdate/SUEnableAutomaticChecks -bool NO`（Sparkle 原本每 300 秒查一次），**是否真挡得住要等下一次微信发版才知道**；挡不住就移植 fzlzjerry 的 `update` 补丁目标。4.1.13 起 Sparkle 以当前用户身份写包，`/Applications/WeChat.app` 归用户所有，**打补丁不再需要 sudo**。
 - **验证只能靠实收撤回**：防撤回是否生效，必须找人发消息再撤回实测（README 已强调），符号被剥离、无法静态确认。
 - **微信 4.x 只做了防撤回**：多开需整包复制 App，阻止更新的补丁点尚未纳入本 fork。
-- **重签名逻辑在 Command.swift**：改补丁流程注意先单独签被改的 dylib，再 `--deep` 签整个 App。
+- **重签名逻辑在 `Resigner.swift`**（2026-09-02 重写）：快照全包 entitlements → 签 dylib → `--deep --preserve-metadata=identifier,flags,runtime` 签整包 → 逐组件恢复原 entitlements + 注入 2 个 `cs.*` 键 → 比对 → `--verify --deep --strict`。**禁回退到 `--remove-sign` + 裸 `--deep --sign -`**：那会抹光沙盒/Team-ID entitlements，SIP 开启的机器上微信直接闪退（#1038 269579 多人实证）。
+- ⚠️ **本机 SIP 是关闭的**（enableMacosAI 内核扩展需要），**签名 / entitlements / AMFI 类问题在本机永远复现不出来**——「本机能跑」不构成签名正确的证据。签名改动的验收 = 对原厂 dmg 副本跑 patch 后逐组件比对 entitlements（`Tests` 里没法覆盖 codesign，本轮是手工脚本；原厂 dmg：<https://dldir1v6.qq.com/weixin/Universal/Mac/WeChatMac.dmg>），真机验证只能靠 issue 里的用户反馈。
+- **打补丁前工具自检微信是否在运行**（`pgrep -f <app>/Contents/MacOS/`），在跑就拒绝；⌘Q/pkill 后微信要几秒才退干净。

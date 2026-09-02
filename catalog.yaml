@@ -11,6 +11,7 @@ key_scripts:
   - Sources/WeChatTweak/Config.swift  # config.json 解码
   - Sources/WeChatTweak/Patcher.swift # Mach-O VA→偏移 + 字节校验 + 等长写入
   - Sources/WeChatTweak/RevokeLocator.swift  # --auto-locate 按签名代扫 dylib
+  - Sources/WeChatTweak/Resigner.swift       # 保留 entitlements 的 ad-hoc 重签名（SIP 开启机器上不闪退的关键）
   - config.json                       # 补丁数据 SSOT（每构建号一组 targets/entries）
   - signatures.json                   # 签名各代 SSOT → tools/gen_signatures.py 派生 Swift 表
   - tools/sync_ref.py                 # 从参考实现同步补丁点（本机构建逐字节校验）

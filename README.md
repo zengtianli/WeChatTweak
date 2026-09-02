@@ -79,7 +79,7 @@ python3 tools/locate_revoke.py --append && swift build -c release
 
 两条路都过写入前的原始字节校验：地址不对直接报 `expectedMismatch` 拒写，不会弄坏微信。
 
-打补丁会自动重签名（先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App），避免运行到被改代码时报 `Code Signature Invalid`。
+打补丁会自动重签名：先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App，并**逐组件保留原厂 entitlements**（微信是 App Sandbox + Hardened Runtime，沙盒/相机/麦克风/app-group 一项都不能丢）+ 注入两个 `com.apple.security.cs.*` 键让 ad-hoc 身份跑得起来；签完逐项比对，丢一项就报错。细节见 `Sources/WeChatTweak/Resigner.swift` 文件头。
 
 ### 微信 3.8.x（上游 Homebrew）
 
@@ -187,6 +187,9 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 > 若定位器报「命中 0 处」或「命中多处」，说明该构建把 `parseRevokeXML` 重编译成了新的一代，需人工用 `lipo -thin arm64` 抽切片后复核几何特征，把新一代的五个参数加进 `tools/locate_revoke.py` 的 `GENERATIONS` 和 `RevokeLocator.swift` 的 `signatures`（两处必须同步）。最省力的线索是 fzlzjerry/wechat-antirecall 的 `patches.json`：它若已收录相邻构建号，新一代的编码可直接从那一条读出（2026-08-28 的 269579 就是这么定的）。手工兜底：补丁点 = 入口 `E + 0x270`，把那条 `cbz w0` 等长改成同目标的 `b`。
 
 ## 常见问题
+
+- **打完补丁微信闪退 / 打不开（269579 起多人报告，#1038）**：2026-09-02 之前的版本重签名时把整个包的 entitlements 全抹掉了（沙盒、相机、麦克风、app-group、Team ID 全没），SIP 开启的 Mac 上 AMFI 直接把微信杀掉；维护者机器 SIP 关闭所以没发现。**已修**：现在逐组件保留原厂 entitlements 并注入 `cs.disable-library-validation` / `cs.allow-unsigned-executable-memory` 两个键（与 fzlzjerry/wechat-antirecall 同方案），重签名后逐项比对，丢一项就报错拒绝宣称成功。**已被老版本打坏的包救不回来**（entitlements 已从文件里删掉）：去 <https://mac.weixin.qq.com> 重装微信，拉最新代码 `swift build -c release`，再打一次。
+- **`WeChat is still running`**：⌘Q 后微信要几秒才真正退出，`pgrep -x WeChat` 没输出了再打。
 
 - **`Unsupported version`**：你的构建号不在 `config.json`。先 `python3 tools/sync_ref.py`（参考实现多半已收录），没有再 `python3 tools/locate_revoke.py --append`，然后 `swift build`。若加了本地条目仍报错，确认用的是本仓库编译出的二进制（默认已本地优先读 config，不必 `-c`）。
 - **`config.json has no revoke-keeptip patch point for WeChat build XXXXXX yet`**：**不是你的版本做不了**，是这个构建号的 keeptip 补丁点还没被收录（早期条目从 issue 评论手工收录，只带了静默那一个点）。keeptip 点 = 静默点 `+ delta`（按代 `0x794` / `0x7a0`），可自动算出：加 `--auto-locate` 让工具当场扫，或先 `python3 tools/locate_revoke.py --append && swift build -c release` 固化进 config。

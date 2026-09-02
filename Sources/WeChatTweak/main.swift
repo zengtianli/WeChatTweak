@@ -55,6 +55,12 @@ extension Tweak {
         var autoLocate: Bool = false
 
         mutating func run() async throws {
+            // Patching / re-signing a running app makes macOS kill it mid-flight (Code Signature
+            // Invalid) and leaves a half-signed bundle; WeChat also takes several seconds to
+            // actually exit after ⌘Q / pkill, so check rather than trust the user's timing.
+            if Command.isRunning(app: options.app) {
+                throw Error.appRunning
+            }
             print("------ Version ------")
             let version = try await Command.version(app: options.app)
             print("WeChat version: \(version ?? "unknown")")
@@ -95,6 +101,7 @@ struct Tweak: AsyncParsableCommand {
         case invalidConfig
         case invalidVersion
         case unsupportedVersion
+        case appRunning
 
         var errorDescription: String? {
             switch self {
@@ -106,6 +113,8 @@ struct Tweak: AsyncParsableCommand {
                 return "Invalid app version"
             case .unsupportedVersion:
                 return "Unsupported WeChat version"
+            case .appRunning:
+                return "WeChat is still running — quit it completely first (⌘Q, then wait a few seconds; `pgrep -x WeChat` must print nothing), then re-run patch."
             }
         }
     }

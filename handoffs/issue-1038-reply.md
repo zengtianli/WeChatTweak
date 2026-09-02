@@ -1,47 +1,27 @@
-# issue #1038 回复草稿 — `--variant keeptip` 在 269110/269111 报不可用
+# issue #1038 回复草稿 — 269579+ 打补丁后微信闪退（2026-09-02）
 
-> 状态：草稿，**未发布**。发之前自己再读一遍，确认 fork 里 `b32f482` 已推上去（已推）。
-> 前身 `wuliyc-reply-draft.md`（向 wuliyc 索取改法）已作废——那些信息后来自己逆出来了，见 `docs/anti-revoke-patch.md`。
+> 状态：修复已 push（commit 见 git log）。下面这段是准备贴到 sunnyyoung/WeChatTweak#1038 的回复，发前请用户过目。
+> 历史草稿（`--variant keeptip` 在 269110/269111 报不可用）已过时，删。
 
 ---
 
-## 回复正文（可直接贴）
+@783283 @kimibear 闪退的根因找到了，已修，抱歉。
 
-报错 `The keeptip variant is not available for WeChat build 269111` 不是你的版本做不了，是我 `config.json` 里那条数据缺了一半，已修（`b32f482`）。
+**原因**：微信 4.x 主程序是 App Sandbox + Hardened Runtime，entitlements 里带腾讯 Team ID。本仓库之前的重签名流程是 `codesign --remove-sign` 再裸 `--deep --sign -`，这会把整个包（主程序 + 全部 helper/appex）的 entitlements 全部抹掉——沙盒、相机、麦克风、app-group 一个不剩。SIP 开启的 Mac 上 AMFI 直接把微信杀掉，表现就是闪退。我自己的机器 SIP 是关的，所以一直没复现出来，这是我的问题。
 
-**原因**：`keeptip` 需要两个补丁点，而 269110/269111 的条目当时是从本 issue 的评论里手工收录的，评论只报了静默那一个地址：
+**修复**（已 push 到 master）：重签名改为逐组件保留原厂 entitlements，并注入 `com.apple.security.cs.disable-library-validation` / `com.apple.security.cs.allow-unsigned-executable-memory` 两个键（与 fzlzjerry/wechat-antirecall 同一方案，他们那边多用户验证过），签完逐项比对，丢任何一项直接报错。我用官方 dmg 的原厂 269579 包跑了一遍：175 个组件 entitlements 与原厂一致，`codesign --verify --deep --strict` 通过。
 
-| 变体 | 补丁点 | 原字节 → 写入 |
-|---|---|---|
-| `silent` | `E+0x270` | `E00F0034` (`cbz w0`) → `7F000014` (`b`) |
-| `keeptip` | `E+0x270` | `E00F0034` 或 `7F000014` → `E00F0034`（还原 `cbz`，让解析照跑、提示才会渲染） |
-| `keeptip` | `E+0xA04` | `60B600F9` (`str x0,[x19,#0x168]`) → `7FB600F9` (`str xzr`)，把 `newmsgid` 清零 |
-
-`E` = `parseRevokeXML` 入口。**两个补丁点的距离 `0x794` 跨构建号恒定**，而 `tools/locate_revoke.py` 的定位签名本来就同时要求这两处特征成立——也就是说它扫出静默点时，keeptip 点已经确定了，只是之前脚本没把它打印出来。现在一次输出两个 target：
-
-所以现在两条路都能走，**任何能打静默补丁的 4.x 构建号都能打 keeptip，不用等我收录**：
+**怎么恢复**（已经被老版本打过的包救不回来，entitlements 已经从文件里删掉了）：
 
 ```bash
-# 路 1：工具自己扫签名算补丁点（不改 config.json）
-sudo .build/release/wechattweak patch --variant keeptip --auto-locate
-
-# 路 2：先固化进 config.json 再打
-python3 tools/locate_revoke.py --append && swift build -c release
-sudo .build/release/wechattweak patch --variant keeptip
+# 1. 重装微信：去 https://mac.weixin.qq.com 下 dmg 覆盖安装（装完可能自动升到 269626，两个构建号都已支持）
+# 2. 更新本仓库并重编
+cd WeChatTweak && git pull && swift build -c release
+# 3. 完全退出微信（⌘Q 后等几秒，`pgrep -x WeChat` 没输出才算退干净；现在工具会自检，在跑就拒绝）
+# 4. 打补丁 —— 4.1.13 起先【不加 sudo】，包归当前用户所有；报 permission denied 再加
+.build/release/wechattweak patch --variant keeptip      # 或不带 --variant 用静默
 ```
 
-顺带修了个会误伤你们的 bug：两个定位器原来只认原始的 `cbz`(E00F0034)，**已经打过静默补丁的机器会报「未命中签名」**——而想换 keeptip 的人几乎都打过静默。现在两种字节都认。
+**顺便**：config 已同步 fzlzjerry 的全部 4.x 构建号（268575 ~ 269626 共 35 个），以后微信热修后 `python3 tools/sync_ref.py && swift build -c release` 就能跟上；本仓库 issues 也已打开，可以直接去 zengtianli/WeChatTweak 报。
 
-**两点需要说清楚**：
-
-1. 269136 是我本机实测过的；**269110/269111 的 keeptip 地址是按 `+0x794` 推导的，我手上没有这两个版本的 dylib，没能实机验证**。打补丁前有原始字节校验，地址不对会直接报 `expectedMismatch` 拒绝写入，不会把微信弄坏（这条兜底我拿伪造成 269111 的 stub app 实测过：报 `byte mismatch at 0x450a144 ... refusing to patch`，dylib 的 md5 与打之前一致，确实一个字节都没写）。你打成功或打失败都麻烦回一句，我好把它转成实测确认。
-2. `keeptip` 在 269136 上的实测结论：**私聊撤回有提示，群聊撤回仍然静默（消息在、无提示）**。因为 `newmsgid` 同时决定「删哪条消息」和「群聊提示插到哪条下面」，清零它保住了消息也掐掉了群聊提示。群聊要出提示得保留真 `newmsgid`、改为掐掉下游那次删除调用，那条调用走虚派发、静态定位不到，需要 lldb 动态跟，属独立工程，还没做。
-
-fork：https://github.com/zengtianli/WeChatTweak
-
----
-
-## 未尽事项
-
-- 等 269110/269111 用户回报实测结果 → 把 README 里「推导未验证」改成实测结论。
-- 群聊 keeptip 仍卡在下游删除调用的动态定位（见 `handoffs/_archive/2026-09-02-group-delete-hunt.md`，已放弃）。
+我这边没有 SIP 开启的机器，**修复是否彻底需要你们实测**：重装 + 打完后微信能正常打开、能登录，请回一句；若仍闪退，请贴 `~/Library/Logs/DiagnosticReports/` 里最新的 `WeChat-*.ips` 前 30 行（`Exception Type` / `Termination Reason` 那几行最关键）和 `sw_vers` 输出。

@@ -48,6 +48,18 @@ struct Command {
 
     static let defaultBinary = "Contents/MacOS/WeChat"
 
+    /// True if any process is running out of this bundle's `Contents/MacOS/`.
+    static func isRunning(app: URL) -> Bool {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/pgrep")
+        p.arguments = ["-f", app.standardizedFileURL.appendingPathComponent("Contents/MacOS/").path]
+        p.standardOutput = FileHandle.nullDevice
+        p.standardError = FileHandle.nullDevice
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
+    }
+
     /// Patches every target into its own binary (default `Contents/MacOS/WeChat`;
     /// WeChat 4.x targets `Contents/Resources/wechat.dylib`). Returns the unique
     /// bundle-relative paths that were touched, so `resign` can sign them first.
@@ -109,25 +121,13 @@ struct Command {
                              binary: relative)
     }
 
+    /// Re-sign after patching. See `Resigner.swift` for why this is more than
+    /// `codesign --deep --sign -` (App Sandbox + Hardened Runtime + Team-ID entitlements).
     static func resign(app: URL, patchedBinaries: [String] = []) async throws {
-        // Sign each patched nested binary first, so a modified dylib already carries
-        // a valid ad-hoc signature before the app-level --deep re-sign wraps it.
-        // Otherwise the running app can hit `Code Signature Invalid` on the patched page.
-        for relative in patchedBinaries where relative != Command.defaultBinary {
-            let path = app.appendingPathComponent(relative).path
-            try await Command.execute(command: "codesign --force --sign - \(q(path))")
-        }
-        try await Command.execute(command: "codesign --remove-sign \(q(app.path))")
-        try await Command.execute(command: "codesign --force --deep --sign - \(q(app.path))")
-        // Quarantine strip is cosmetic and comes after signing succeeded. WeChat ships
-        // read-only nested files (e.g. WeChatAppEx's gpu_shader_cache.bin, mode 0444)
-        // that make `xattr -cr` return EACCES; that must not turn a completed, signed
-        // patch into an "Error:" exit. Warn instead — the bundle itself carries no quarantine.
-        do {
-            try await Command.execute(command: "xattr -cr \(q(app.path))")
-        } catch {
-            print("[warn] xattr -cr failed on some nested file(s); patch + resign already completed. Detail: \(error.localizedDescription)")
-        }
+        let nested = patchedBinaries
+            .filter { $0 != Command.defaultBinary }
+            .map { app.appendingPathComponent($0) }
+        try Resigner.resign(app: app, patchedBinaries: nested)
     }
 
     @discardableResult
