@@ -12,18 +12,18 @@
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
 > Anti-recall + auto-updater block, WeChat builds `268575` → `269627`.
-> Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/Unrevoke)**.
+> Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
 
-## 🖥 想要图形界面 → [Unrevoke](https://github.com/zengtianli/Unrevoke)
+## 🖥 想要图形界面 → [Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)
 
 命令行版要你自己查构建号、自己选子命令、微信每次更新后记得再跑一遍。
-**[Unrevoke](https://github.com/zengtianli/Unrevoke)** 是本引擎的图形前端：自己认版本、一个按钮、
+**[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)** 是本引擎的图形前端：自己认版本、一个按钮、
 微信更新后自己把补丁打回去、出错一键还原。内嵌的就是这个仓库编出来的 `wechattweak`，
 补丁库也是这个仓库的 `config.json`（所以新微信版本收录进来后，装着的 app 自己就能拿到，不用更新 app）。
 
-[下载 v1.0](https://github.com/zengtianli/Unrevoke/releases/latest) · 同为 AGPL-3.0
+[下载 v1.0](https://github.com/zengtianli/WeChatUnrevoke/releases/latest) · 同为 AGPL-3.0
 
 ---
 
@@ -72,7 +72,26 @@
 
 ## 安装 & 使用
 
-### 微信 4.x（从源码构建 —— 上游 brew 包不含 4.x 支持）
+### 微信 4.x —— Homebrew（最省事）
+
+```bash
+brew install zengtianli/tap/wechattweak
+sudo wechattweak patch      # 防撤回 + 顺手挡住微信自动更新
+wechattweak doctor          # 体检
+sudo wechattweak restore    # 想还原
+```
+
+装的是预编译的 universal 二进制，不需要 Xcode。已经装过别家同名包要先卸
+（二进制名一样会冲突）：
+
+```bash
+brew uninstall sunnyyoung/tap/wechattweak || brew uninstall wechattweak
+```
+
+补丁库（`config.json`）在运行时从本仓 `master` 拉，所以微信出新版本被收录后，
+**不用升级这个 formula**。
+
+### 微信 4.x（从源码构建）
 
 ```bash
 # 1. 克隆本 fork
@@ -112,7 +131,7 @@ pkill -x WeChat
 
 > **`doctor --json` 是 GUI 契约**：`overall` 取值 `protected` / `partial` / `unprotected` /
 > `unsupportedBuild` / `brokenBundle` / `mixed`，判决只在这里算一次。
-> 消费方（如 [Unrevoke](https://github.com/zengtianli/Unrevoke)）**只解码不重新推导** ——
+> 消费方（如 [Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)）**只解码不重新推导** ——
 > 两边各推一遍，改这个文件那天就会给出不同答案。
 
 > **SIP 开着和关着，操作命令一样，差别在「怎么判断打好了」**（`doctor` 会按 `csrutil status` 分别给结论）：
@@ -133,7 +152,7 @@ python3 tools/locate_revoke.py --append && swift build -c release
 
 打补丁会自动重签名：先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App，并**逐组件保留原厂 entitlements**（微信是 App Sandbox + Hardened Runtime，沙盒/相机/麦克风/app-group 一项都不能丢）+ 注入两个 `com.apple.security.cs.*` 键让 ad-hoc 身份跑得起来；签完逐项比对，丢一项就报错。细节见 `Sources/WeChatTweak/Resigner.swift` 文件头。
 
-### 微信 3.8.x（上游 Homebrew）
+### 微信 3.8.x（上游 Homebrew，只覆盖 3.8.x）
 
 ```bash
 brew install sunnyyoung/tap/wechattweak
