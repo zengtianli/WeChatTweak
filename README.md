@@ -6,7 +6,36 @@
 
 一个用于修改 macOS 微信客户端的命令行工具。
 
-> **本 fork 的改动**：在 [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak) 基础上，**新增微信 4.1.10（build 268880）的防撤回支持**。上游只覆盖到微信 3.8.x（消息逻辑还在主程序里）；微信 4.x 把撤回逻辑整体搬进了 `Contents/Resources/wechat.dylib`，本 fork 相应地支持按目标 dylib 打补丁，并加了写入前的原始字节校验（打错版本会直接报错，不会盲写把微信弄坏）。
+> **English** — Upstream [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak) (13.8k★) stopped
+> at **February 2026** and does not cover WeChat 4.x, which moved the message logic out of the main binary into
+> `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
+> bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
+> `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
+> Anti-recall + auto-updater block, WeChat builds `268575` → `269627`.
+> Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/Unrevoke)**.
+
+---
+
+## 🖥 想要图形界面 → [Unrevoke](https://github.com/zengtianli/Unrevoke)
+
+命令行版要你自己查构建号、自己选子命令、微信每次更新后记得再跑一遍。
+**[Unrevoke](https://github.com/zengtianli/Unrevoke)** 是本引擎的图形前端：自己认版本、一个按钮、
+微信更新后自己把补丁打回去、出错一键还原。内嵌的就是这个仓库编出来的 `wechattweak`，
+补丁库也是这个仓库的 `config.json`（所以新微信版本收录进来后，装着的 app 自己就能拿到，不用更新 app）。
+
+[下载 v1.0](https://github.com/zengtianli/Unrevoke/releases/latest) · 同为 AGPL-3.0
+
+---
+
+> **本 fork 与上游的关系**：上游 [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak)
+> （13.8k★、1.6k fork）**最后一次提交停在 2026 年 2 月**，而微信 4.x 把撤回逻辑整体搬进了
+> `Contents/Resources/wechat.dylib`，它知道的补丁点全部失效。本 fork 从 4.1.10（build 268880）接上，
+> 现已覆盖到 **build 269627**，并且：
+>
+> - 支持**按目标 dylib** 打补丁（4.x 的逻辑不在主程序里了）
+> - **写入前校验原始字节** —— 打错版本直接报错，不会盲写把微信弄坏
+> - 重签名**保住 entitlements** —— 剥掉它们的微信在开着 SIP 的机器上根本起不来（上游 issue #1038 里那批人遇到的就是这个）
+> - 默认同时拦住微信自带的自动更新（不拦的话，下次更新整包替换会把补丁抹掉，已经发生过四次）
 
 ## 功能
 
@@ -68,7 +97,23 @@ pkill -x WeChat
 .build/release/wechattweak patch --variant keeptip
 
 # 6. 重新打开微信；再跑一次 doctor 应看到 ✅
+
+# 想还原：把每个补丁点写回原始字节并重签名（微信恢复原样，自动更新也一并恢复）
+.build/release/wechattweak restore
+
+# 给脚本/GUI 用：同一趟检查的机器可读版本，overall 字段就是最终判决
+.build/release/wechattweak doctor --json
 ```
+
+> **`restore` 的安全边界**：反演规则是「写回 `expected[0]`」，同时接受「已打补丁」和「已是原始」
+> 两种入口，所以连跑两次是幂等的；遇到既不是原始也不是本工具写的字节（别的工具改过）会报
+> `expectedMismatch` 拒写。**五个远古 3.8.x 构建号的 config 条目没有 `expected` 字段**，
+> 没有原始值可写回 —— 这种情况在**动手之前**整体拒绝，不会写一半（重装微信即可）。
+
+> **`doctor --json` 是 GUI 契约**：`overall` 取值 `protected` / `partial` / `unprotected` /
+> `unsupportedBuild` / `brokenBundle` / `mixed`，判决只在这里算一次。
+> 消费方（如 [Unrevoke](https://github.com/zengtianli/Unrevoke)）**只解码不重新推导** ——
+> 两边各推一遍，改这个文件那天就会给出不同答案。
 
 > **SIP 开着和关着，操作命令一样，差别在「怎么判断打好了」**（`doctor` 会按 `csrutil status` 分别给结论）：
 > - **SIP 开启**（绝大多数 Mac）：系统强制校验 entitlements。包一旦被抹掉 entitlements（2026-09-02 前的本工具会这样），微信启动即被杀。`doctor` 的 `Entitlements` 行必须是 `app-sandbox ✓, application-identifier ✓`；显示 `NONE` 就只能重装微信再打。打补丁必须用本工具默认的保留-entitlements 重签名，别手动 `codesign --remove-sign` / 裸 `--deep --sign -`。
