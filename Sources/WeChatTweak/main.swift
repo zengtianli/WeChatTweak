@@ -102,6 +102,43 @@ extension Tweak {
 
 }
 
+// MARK: Restore
+extension Tweak {
+    struct Restore: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Undo the patch: write every patch point back to its original bytes, then re-sign")
+
+        @OptionGroup
+        var options: Tweak.Options
+
+        mutating func run() async throws {
+            // Same reason as patch: re-signing a running bundle gets it killed mid-flight
+            // and leaves a half-signed app.
+            if Command.isRunning(app: options.app) {
+                throw Error.appRunning
+            }
+            print("------ Version ------")
+            let version = try await Command.version(app: options.app)
+            print("WeChat version: \(version ?? "unknown")")
+
+            print("------ Config ------")
+            guard let config = (try await Config.load(url: options.config)).first(where: { $0.version == version }) else {
+                throw Error.unsupportedVersion
+            }
+            print("Matched config: build \(config.version), targets: \(config.targets.map(\.identifier).joined(separator: ", "))")
+
+            let restored = try Command.restore(app: options.app, config: config)
+            print("Done!")
+
+            print("------ Resign ------")
+            try await Command.resign(app: options.app, patchedBinaries: restored)
+            print("Done!")
+            print("WeChat is back to stock. Its auto-updater is live again, so the next update will land normally.")
+
+            Darwin.exit(EXIT_SUCCESS)
+        }
+    }
+}
+
 // MARK: Doctor
 extension Tweak {
     struct Doctor: AsyncParsableCommand {
@@ -110,10 +147,13 @@ extension Tweak {
         @OptionGroup
         var options: Tweak.Options
 
+        @Flag(help: "Emit the same pass as a JSON object (snake_case keys) instead of prose. This is the GUI's contract — `overall` is the single verdict; never re-derive it from the text.")
+        var json: Bool = false
+
         mutating func run() async throws {
             let configs = try await Config.load(url: options.config)
             let report = try await WeChatTweak.Doctor.run(app: options.app, configs: configs)
-            print(report.text)
+            print(json ? try report.json() : report.text)
             Darwin.exit(EXIT_SUCCESS)
         }
     }
@@ -210,6 +250,7 @@ struct Tweak: AsyncParsableCommand {
         subcommands: [
             Versions.self,
             Patch.self,
+            Restore.self,
             Doctor.self
         ]
     )

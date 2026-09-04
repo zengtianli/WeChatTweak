@@ -12,6 +12,7 @@ struct Command {
         case executing(command: String, error: NSDictionary)
         case keeptipUnavailable(version: String)
         case updateUnavailable(version: String, reason: String)
+        case restoreUnavailable(version: String, targets: [String])
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +27,13 @@ struct Command {
                         sudo wechattweak patch --variant keeptip --auto-locate
                     or curate it into config.json first:
                         python3 tools/locate_revoke.py --append && swift build -c release
+                    """
+            case let .restoreUnavailable(version, targets):
+                return """
+                    Cannot restore WeChat build \(version): config.json records no original bytes for \
+                    \(targets.joined(separator: ", ")), so there is nothing to write back — and guessing \
+                    would corrupt the binary. Those entries predate the `expected` field (WeChat 3.8.x only).
+                    Reinstall WeChat from https://mac.weixin.qq.com to get a pristine bundle.
                     """
             case let .updateUnavailable(version, reason):
                 return """
@@ -137,6 +145,49 @@ struct Command {
             let relative = target.binary ?? Command.defaultBinary
             print("------ Target: \(target.identifier) (\(relative)) ------")
             try Patcher.patch(binary: app.appendingPathComponent(relative), entries: target.entries)
+            if !patched.contains(relative) {
+                patched.append(relative)
+            }
+        }
+        return patched
+    }
+
+    /// Undo everything `patch` writes: put every patch point back to its pristine bytes.
+    ///
+    /// Convention (verified across all 37 builds in config.json): `expected[0]` is the
+    /// pristine value; any further entries are accepted-but-not-pristine variants — e.g.
+    /// keeptip tolerates the silent patch already being there. So the inverse of an entry
+    /// is "write expected[0], accepting either the patched bytes or the pristine ones".
+    /// That makes restore idempotent, and it still refuses on foreign bytes because
+    /// `Patcher` gates every write on the expected list.
+    ///
+    /// Fails loudly — never partially — when a target carries no `expected` at all: those
+    /// five WeChat 3.8.x builds predate the bookkeeping, so there is no original to write
+    /// back and a guess would corrupt someone's WeChat.
+    @discardableResult
+    static func restore(app: URL, config: Config) throws -> [String] {
+        let missing = config.targets
+            .filter { $0.entries.contains { $0.expected.isEmpty } }
+            .map(\.identifier)
+        guard missing.isEmpty else {
+            throw Error.restoreUnavailable(version: config.version, targets: missing)
+        }
+
+        var patched: [String] = []
+        for target in config.targets {
+            let relative = target.binary ?? Command.defaultBinary
+            let inverted = try target.entries.map { entry -> Config.Entry in
+                let pristine = entry.expected[0]
+                // Accept the patched bytes *and* every already-accepted original, so running
+                // restore twice is a no-op rather than an "unexpected bytes" failure.
+                var accept = [entry.asm.hexString]
+                accept.append(contentsOf: entry.expected.map(\.hexString))
+                var seen = Set<String>()
+                let unique = accept.filter { seen.insert($0).inserted }
+                return try Config.Entry(arch: entry.arch, addr: entry.addr, asmHex: pristine.hexString, expectedHex: unique)
+            }
+            print("------ Restore: \(target.identifier) (\(relative)) ------")
+            try Patcher.patch(binary: app.appendingPathComponent(relative), entries: inverted)
             if !patched.contains(relative) {
                 patched.append(relative)
             }

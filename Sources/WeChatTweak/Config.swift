@@ -138,6 +138,13 @@ struct Config: Decodable {
     let version: String
     let targets: [Target]
 
+    /// Decodable-only in production (config.json is the source), but `--auto-locate`
+    /// and the tests need to build one in memory.
+    init(version: String, targets: [Target]) {
+        self.version = version
+        self.targets = targets
+    }
+
     static func load(url: URL) async throws -> [Config] {
         if url.isFileURL {
             return try JSONDecoder().decode(
@@ -151,6 +158,11 @@ struct Config: Decodable {
             )
         }
     }
+}
+
+extension Data {
+    /// Uppercase hex, the same shape config.json and every error message uses.
+    var hexString: String { map { String(format: "%02X", $0) }.joined() }
 }
 
 private extension Data {

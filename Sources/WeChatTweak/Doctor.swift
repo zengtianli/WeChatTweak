@@ -12,68 +12,135 @@
 //    · patch state of every relevant target: anti-revoke (silent / keeptip) and update block
 //  and then says the exact next command. Nothing here writes.
 //
+//  Two renderings of the *same* pass (2026-09-04): `Status` is the machine-readable one
+//  (`doctor --json`, consumed by the Unrevoke GUI) and `Report.text` is the human one.
+//  The verdict logic lives once, in `Status.overall` — the GUI must never re-derive
+//  "is it protected?" from the text, or the two answers drift the day this file changes.
+//
 
 import Foundation
 
 struct Doctor {
-    enum SIP: String { case enabled, disabled, unknown }
+    enum SIP: String, Encodable { case enabled, disabled, unknown }
+
+    /// Machine-readable result of one doctor pass. Field names are snake_case on the wire
+    /// (see `encode`), because the GUI decodes with `.convertFromSnakeCase`.
+    struct Status: Encodable {
+        /// The single verdict the GUI renders as its big status card. Ordered by severity:
+        /// the first matching condition wins, so a broken bundle outranks a missing patch.
+        enum Overall: String, Encodable {
+            /// Bundle lost its entitlements — WeChat will not launch (SIP on). Reinstall.
+            case brokenBundle
+            /// Some patch point holds bytes that are neither pristine nor ours.
+            case mixed
+            /// config.json has no entry for this build yet.
+            case unsupportedBuild
+            /// Anti-revoke and the update block are both applied.
+            case protected
+            /// One of the two is applied, the other is not.
+            case partial
+            /// Nothing applied, and nothing is in the way.
+            case unprotected
+        }
+
+        var overall: Overall
+        var build: String?
+        var appPath: String
+        var configKnown: Bool
+        var configTargets: [String]
+        var sip: SIP
+        var running: Bool
+        /// false → the patch must run with sudo.
+        var writable: Bool
+        var signature: String
+        var entitlementsOK: Bool
+        var entitlementKeyCount: Int
+        /// `patched` / `pristine` / `unknown` / nil when the build has no such target.
+        var antiRevokeSilent: String?
+        var antiRevokeKeeptip: String?
+        var updateBlock: String?
+        var updateSource: String
+        var sparkle: [String: String]
+        var verdict: [String]
+        /// The exact shell command this machine should run next, or nil when there is nothing to do.
+        var nextCommand: String?
+
+        /// Which variant is currently live, if any — `silent` / `keeptip` / nil.
+        var activeVariant: String? {
+            if antiRevokeSilent == Patcher.State.patched.rawValue { return "silent" }
+            if antiRevokeKeeptip == Patcher.State.patched.rawValue { return "keeptip" }
+            return nil
+        }
+    }
 
     struct Report {
+        var status: Status
         var lines: [String] = []
-        var verdict: [String] = []
         var text: String {
-            (["------ Doctor ------"] + lines + ["------ Verdict ------"] + verdict).joined(separator: "\n")
+            (["------ Doctor ------"] + lines + ["------ Verdict ------"] + status.verdict).joined(separator: "\n")
+        }
+        /// Pretty JSON for `--json`. snake_case keys, stable field order via the encoder.
+        func json() throws -> String {
+            let encoder = JSONEncoder()
+            encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+            encoder.keyEncodingStrategy = .convertToSnakeCase
+            return String(decoding: try encoder.encode(status), as: UTF8.self)
         }
     }
 
     static func run(app: URL, configs: [Config]) async throws -> Report {
-        var r = Report()
         let fm = FileManager.default
+        var lines: [String] = []
 
         // 1. build + config
         let version = try await Command.version(app: app)
         let config = configs.first { $0.version == version }
-        r.lines.append("WeChat build: \(version ?? "unknown")  (\(app.path))")
-        r.lines.append("config.json:  \(config == nil ? "NO entry for this build" : "matched (\(config!.targets.map(\.identifier).joined(separator: ", ")))")")
+        lines.append("WeChat build: \(version ?? "unknown")  (\(app.path))")
+        lines.append("config.json:  \(config == nil ? "NO entry for this build" : "matched (\(config!.targets.map(\.identifier).joined(separator: ", ")))")")
 
         // 2. SIP
         let sip = sipStatus()
-        r.lines.append("SIP:          \(sip.rawValue)")
+        lines.append("SIP:          \(sip.rawValue)")
 
         // 3. running / ownership
         let running = Command.isRunning(app: app)
-        r.lines.append("Running:      \(running ? "yes — quit it before patching" : "no")")
-        let dylib = app.appendingPathComponent("Contents/Resources/wechat.dylib")
+        lines.append("Running:      \(running ? "yes — quit it before patching" : "no")")
+        let dylib = app.appendingPathComponent(Command.dylibBinary)
         let writable = fm.isWritableFile(atPath: app.path) && (!fm.fileExists(atPath: dylib.path) || fm.isWritableFile(atPath: dylib.path))
-        r.lines.append("Writable:     \(writable ? "yes — no sudo needed" : "no — run patch with sudo")")
+        lines.append("Writable:     \(writable ? "yes — no sudo needed" : "no — run patch with sudo")")
 
         // 4. signature + entitlements
         let sig = capture("/usr/bin/codesign", ["-dvv", app.path])
         let authority = sig.split(separator: "\n").first { $0.hasPrefix("Authority=") }.map { String($0.dropFirst("Authority=".count)) }
         let adhoc = sig.contains("Signature=adhoc")
-        r.lines.append("Signature:    \(adhoc ? "ad-hoc (already re-signed by a tool)" : (authority ?? "unreadable"))")
+        let signature = adhoc ? "ad-hoc (already re-signed by a tool)" : (authority ?? "unreadable")
+        lines.append("Signature:    \(signature)")
 
         let mainEnts = entitlementKeys(at: app)
         let sandboxed = mainEnts?.contains("com.apple.security.app-sandbox") ?? false
         let hasTeam = mainEnts?.contains("com.apple.application-identifier") ?? false
         let libValidationOff = mainEnts?.contains("com.apple.security.cs.disable-library-validation") ?? false
         if let keys = mainEnts {
-            r.lines.append("Entitlements: main executable has \(keys.count) keys (app-sandbox \(sandboxed ? "✓" : "✗"), application-identifier \(hasTeam ? "✓" : "✗"), disable-library-validation \(libValidationOff ? "✓" : "–"))")
+            lines.append("Entitlements: main executable has \(keys.count) keys (app-sandbox \(sandboxed ? "✓" : "✗"), application-identifier \(hasTeam ? "✓" : "✗"), disable-library-validation \(libValidationOff ? "✓" : "–"))")
         } else {
-            r.lines.append("Entitlements: main executable has NONE")
+            lines.append("Entitlements: main executable has NONE")
         }
         let nested = Resigner.codeSigningCandidates(in: app).filter {
             ["app", "appex", "xpc"].contains($0.pathExtension.lowercased()) && $0.standardizedFileURL.path != app.standardizedFileURL.path
         }
         let strippedNested = nested.filter { entitlementKeys(at: $0) == nil }
         if !nested.isEmpty {
-            r.lines.append("              nested app/appex/xpc: \(nested.count), \(strippedNested.count) without entitlements (some helpers ship none even pristine — informational; the verdict keys off the main executable)")
+            lines.append("              nested app/appex/xpc: \(nested.count), \(strippedNested.count) without entitlements (some helpers ship none even pristine — informational; the verdict keys off the main executable)")
         }
         let stripped = mainEnts == nil || !sandboxed || !hasTeam
 
         // 5. Sparkle prefs (informational — the binary block is what actually holds)
-        let suChecks = defaultsRead("SUEnableAutomaticChecks"), suAuto = defaultsRead("SUAutomaticallyUpdate"), suLast = defaultsRead("SULastCheckTime")
-        r.lines.append("Sparkle:      SUEnableAutomaticChecks=\(suChecks) SUAutomaticallyUpdate=\(suAuto) SULastCheckTime=\(suLast)")
+        let sparkle = [
+            "SUEnableAutomaticChecks": defaultsRead("SUEnableAutomaticChecks"),
+            "SUAutomaticallyUpdate": defaultsRead("SUAutomaticallyUpdate"),
+            "SULastCheckTime": defaultsRead("SULastCheckTime"),
+        ]
+        lines.append("Sparkle:      SUEnableAutomaticChecks=\(sparkle["SUEnableAutomaticChecks"]!) SUAutomaticallyUpdate=\(sparkle["SUAutomaticallyUpdate"]!) SULastCheckTime=\(sparkle["SULastCheckTime"]!)")
 
         // 6. patch state
         var silent: Patcher.State?, keeptip: Patcher.State?, update: Patcher.State?
@@ -104,43 +171,72 @@ struct Doctor {
             }
         }
         func show(_ s: Patcher.State?) -> String { s.map(\.rawValue) ?? "n/a" }
-        r.lines.append("Anti-revoke:  silent=\(show(silent)) keeptip=\(show(keeptip))")
-        r.lines.append("Update block: \(show(update))  [\(updateSource)]")
+        lines.append("Anti-revoke:  silent=\(show(silent)) keeptip=\(show(keeptip))")
+        lines.append("Update block: \(show(update))  [\(updateSource)]")
 
-        // 7. verdict
-        let sudo = writable ? "" : "sudo "
+        // 7. verdict — one decision, rendered twice (text + Status.overall)
+        var verdict: [String] = []
         switch sip {
         case .enabled:
-            r.verdict.append("SIP is ON: macOS enforces entitlements. A bundle whose entitlements were stripped is killed at launch (that was #1038). This tool's default resign keeps them; never use `codesign --remove-sign` / a bare `--deep --sign -` on this machine.")
+            verdict.append("SIP is ON: macOS enforces entitlements. A bundle whose entitlements were stripped is killed at launch (that was #1038). This tool's default resign keeps them; never use `codesign --remove-sign` / a bare `--deep --sign -` on this machine.")
         case .disabled:
-            r.verdict.append("SIP is OFF: a broken signature still launches here, so \"it opens\" on this Mac proves nothing for SIP-on machines. Judge by the Entitlements line above, not by whether WeChat starts.")
+            verdict.append("SIP is OFF: a broken signature still launches here, so \"it opens\" on this Mac proves nothing for SIP-on machines. Judge by the Entitlements line above, not by whether WeChat starts.")
         case .unknown:
-            r.verdict.append("SIP status unreadable (csrutil failed) — assume ON.")
+            verdict.append("SIP status unreadable (csrutil failed) — assume ON.")
         }
+
+        let sudo = writable ? "" : "sudo "
+        let revokeOn = silent == .patched ? "silent" : (keeptip == .patched ? "keeptip" : nil)
+        let unknowns = [silent, keeptip, update].contains { $0 == .unknown }
+        var overall: Status.Overall
+        var nextCommand: String?
+
         if stripped {
+            overall = .brokenBundle
             if sip == .enabled {
-                r.verdict.append("❌ Bundle has lost its entitlements — WeChat will not start on this machine. Reinstall WeChat from https://mac.weixin.qq.com first, then run patch.")
+                verdict.append("❌ Bundle has lost its entitlements — WeChat will not start on this machine. Reinstall WeChat from https://mac.weixin.qq.com first, then run patch.")
             } else {
-                r.verdict.append("⚠️ Bundle has lost its entitlements (old resign flow). It runs only because SIP is off; sandbox/camera/mic/app-group grants are gone. Reinstall WeChat from https://mac.weixin.qq.com, then run patch.")
+                verdict.append("⚠️ Bundle has lost its entitlements (old resign flow). It runs only because SIP is off; sandbox/camera/mic/app-group grants are gone. Reinstall WeChat from https://mac.weixin.qq.com, then run patch.")
             }
-        }
-        if config == nil {
-            r.verdict.append("❌ Build \(version ?? "?") is not in config.json. From the repo: python3 tools/sync_ref.py && python3 tools/locate_revoke.py --append && python3 tools/locate_update.py --append && swift build -c release")
+        } else if config == nil {
+            overall = .unsupportedBuild
+            verdict.append("❌ Build \(version ?? "?") is not in config.json. From the repo: python3 tools/sync_ref.py && python3 tools/locate_revoke.py --append && python3 tools/locate_update.py --append && swift build -c release")
+        } else if unknowns {
+            overall = .mixed
+            verdict.append("⚠️ Some patch points hold bytes that are neither pristine nor patched — mixed builds or a foreign patch. Reinstall WeChat, then patch.")
+        } else if revokeOn != nil && update == .patched {
+            overall = .protected
+            verdict.append("✅ Anti-revoke (\(revokeOn!)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
         } else {
-            let revokeOn = silent == .patched ? "silent" : (keeptip == .patched ? "keeptip" : nil)
-            let unknowns = [silent, keeptip, update].contains { $0 == .unknown }
-            if let revokeOn, update == .patched {
-                r.verdict.append("✅ Anti-revoke (\(revokeOn)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
-            } else if unknowns {
-                r.verdict.append("⚠️ Some patch points hold bytes that are neither pristine nor patched — mixed builds or a foreign patch. Reinstall WeChat, then patch.")
-            } else {
-                var todo: [String] = []
-                if revokeOn == nil { todo.append("anti-revoke") }
-                if update != .patched { todo.append("update block") }
-                r.verdict.append("➡️ Missing: \(todo.joined(separator: " + ")). \(running ? "Quit WeChat (wait until `pgrep -x WeChat` prints nothing), then run:" : "Run:")  \(sudo)wechattweak patch --variant keeptip")
-            }
+            overall = (revokeOn == nil && update != .patched) ? .unprotected : .partial
+            var todo: [String] = []
+            if revokeOn == nil { todo.append("anti-revoke") }
+            if update != .patched { todo.append("update block") }
+            nextCommand = "\(sudo)wechattweak patch --variant keeptip"
+            verdict.append("➡️ Missing: \(todo.joined(separator: " + ")). \(running ? "Quit WeChat (wait until `pgrep -x WeChat` prints nothing), then run:" : "Run:")  \(nextCommand!)")
         }
-        return r
+
+        let status = Status(
+            overall: overall,
+            build: version,
+            appPath: app.path,
+            configKnown: config != nil,
+            configTargets: config?.targets.map(\.identifier) ?? [],
+            sip: sip,
+            running: running,
+            writable: writable,
+            signature: signature,
+            entitlementsOK: !stripped,
+            entitlementKeyCount: mainEnts?.count ?? 0,
+            antiRevokeSilent: silent?.rawValue,
+            antiRevokeKeeptip: keeptip?.rawValue,
+            updateBlock: update?.rawValue,
+            updateSource: updateSource,
+            sparkle: sparkle,
+            verdict: verdict,
+            nextCommand: nextCommand
+        )
+        return Report(status: status, lines: lines)
     }
 
     // MARK: - probes
