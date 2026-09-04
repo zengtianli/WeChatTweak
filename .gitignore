@@ -63,3 +63,11 @@ xcuserdata/
 # Python (tools/)
 __pycache__/
 *.pyc
+
+### 内部件（不进公开仓）
+# 这几样是本机 harness 的东西：会话约定、app 台账、CC 设置。
+# 公开仓里放它们既没用又暴露内部路径约定，所以只留本地。
+CLAUDE.md
+catalog.yaml
+.claude/
+handoffs/
