@@ -28,6 +28,22 @@ def render(doc):
         lines.append('        Signature(name: "%s", builds: "%s", cbzHex: "%s", branchHex: "%s", delta: %s, strX0Hex: "%s", strXzrHex: "%s", field: %s),'
                      % (g["name"], g["builds"], g["cbz"], g["b"], g["delta"], g["str_x0"], g["str_xzr"], g["field"]))
     lines += ["    ]", "}", ""]
+    u = doc["update"]
+    lines += [
+        "extension UpdateLocator {",
+        '    static let className = "%s"' % u["class"],
+        "    static let retMethods: [String] = [%s]" % ", ".join('"%s"' % m for m in u["ret_methods"]),
+        "    static let zeroAccessors: [(getter: String, setter: String)] = [",
+    ]
+    for a in u["zero_accessors"]:
+        lines.append('        (getter: "%s", setter: "%s"),' % (a["getter"], a["setter"]))
+    lines += [
+        "    ]",
+        '    static let retHex = "%s"' % u["ret"],
+        '    static let movW0ZeroHex = "%s"' % u["mov_w0_0"],
+        "}",
+        "",
+    ]
     return "\n".join(lines)
 
 

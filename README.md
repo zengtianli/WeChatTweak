@@ -10,11 +10,11 @@
 
 ## 功能
 
-| 功能 | 说明 | 微信 3.8.x | 微信 4.x (268880 → 269626) |
+| 功能 | 说明 | 微信 3.8.x | 微信 4.x (268880 → 269627) |
 | --- | --- | :---: | :---: |
 | **防撤回（静默变体）** | 别人撤回的消息原样留在聊天里，不弹提示 | ✓ | ✓（当前发布版） |
 | **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ⚠️（`--variant keeptip`：**私聊**有提示；**群聊**仍静默无提示） |
-| **阻止自动更新** | 拦住自动升级，避免升级把补丁还原 | ✓ | — |
+| **阻止自动更新** | 拦住自动升级，避免升级把补丁还原（微信更新是整包替换，四次把补丁静默抹掉；`defaults write` 关不掉） | ✓ | ✓（`patch` 默认同时打；`--no-block-update` 关） |
 | **客户端多开** | 同时登录多个账号 | ✓ | —（4.x 无字节补丁，需复制 App） |
 
 > **微信 4.x 上有两种防撤回变体，打补丁时用 `--variant` 选**：
@@ -23,20 +23,21 @@
 >
 > `keeptip` 变体在 **build 269136（4.1.11）实机实测**：**私聊**撤回后消息保留且显示提示；**群聊**撤回消息虽保留、但仍无提示（表现同静默变体）。根本矛盾：`newmsgid` 同时控制「删哪条消息」和「群聊提示插到哪条下面」——清零它虽保住了消息，却也让群聊提示的原生插入不再触发（私聊提示不依赖 newmsgid，故照出）。群聊要出提示，必须保留真 newmsgid、转而在下游掐掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需动态（lldb）定位，属独立工程（见[「留提示」变体](#留提示变体--variant-keeptip)末尾）。issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038) 中 wuliyc 报告过在 4.1.11 上的同类效果（未说明群/私聊范围）。
 >
-> 微信 4.x 目前也只做了防撤回：多开只能整包复制 App，阻止更新的补丁点尚未纳入本 fork。
+> 微信 4.x 的多开仍只能整包复制 App。
 
 ## 支持的版本
 
 工具按 **构建号**（`CFBundleVersion`，即 `wechattweak versions` 打印的数字）匹配，不是营销版本号。
 
-| 构建号 | 微信版本 | 防撤回 |
-| --- | --- | :---: |
-| 269626 | 4.1.13 | ✓（本机实测） |
-| 269579 | 4.1.13 | ✓ |
-| 269136 | 4.1.11 | ✓（本机实测） |
-| 268575 ~ 269619 另 24 个构建号 | 4.1.10 ~ 4.1.13 | ✓（`tools/sync_ref.py` 自 fzlzjerry/wechat-antirecall 同步，打补丁时仍过 `expected` 字节门） |
-| 268880 | 4.1.10 | ✓ |
-| 34371 / 32288 / 32281 / 31960 / 31927 | 3.8.x | ✓ |
+| 构建号 | 微信版本 | 防撤回 | 阻止自动更新 |
+| --- | --- | :---: | :---: |
+| 269627 | 4.1.13 | ✓（本机已打，补丁点由 `tools/locate_revoke.py` 定位） | ✓（`tools/locate_update.py` 定位，8 处） |
+| 269626 | 4.1.13 | ✓（本机实测） | —（该构建已被 269627 替代，未收录） |
+| 269579 | 4.1.13 | ✓ | ✓ |
+| 269136 | 4.1.11 | ✓（本机实测） | ✓ |
+| 268575 ~ 269624 另 25 个构建号 | 4.1.10 ~ 4.1.13 | ✓（`tools/sync_ref.py` 自 fzlzjerry/wechat-antirecall 同步，打补丁时仍过 `expected` 字节门） | ✓（同上同步） |
+| 268880 | 4.1.10 | ✓ | —（打补丁时 CLI 会现场按方法名定位，找不到才报错） |
+| 34371 / 32288 / 32281 / 31960 / 31927 | 3.8.x | ✓ | ✓（上游原有） |
 
 先跑 `wechattweak versions` 看你的构建号在不在表里。不在 → 见下方[新增版本](#新增一个版本)。
 
@@ -55,17 +56,23 @@ swift build -c release
 # 3. 退出微信（打补丁时微信在运行会触发签名失效崩溃）
 pkill -x WeChat
 
-# 4. 确认版本被支持
-.build/release/wechattweak versions
+# 4. 体检（只读）：构建号是否支持、SIP 开关、签名/entitlements 是否完好、要不要 sudo、各补丁点状态，
+#    最后一行直接给出这台机器该跑的命令
+.build/release/wechattweak doctor
 
 # 5. 打补丁。先不加 sudo：微信 4.1.13 起由 Sparkle 以当前用户身份更新，/Applications/WeChat.app 归你所有；
-#    报 permission denied（老版本或用 root 装的包）再前面加 sudo
+#    报 permission denied（老版本或用 root 装的包）再前面加 sudo。
+#    默认同时打「阻止自动更新」（不打的话微信下次更新会把补丁连包换掉）；确要保留更新加 --no-block-update
 .build/release/wechattweak patch                    # 默认 = 静默变体（留消息、无提示）
 # 或：留消息 + 仍显示撤回提示
 .build/release/wechattweak patch --variant keeptip
 
-# 6. 重新打开微信
+# 6. 重新打开微信；再跑一次 doctor 应看到 ✅
 ```
+
+> **SIP 开着和关着，操作命令一样，差别在「怎么判断打好了」**（`doctor` 会按 `csrutil status` 分别给结论）：
+> - **SIP 开启**（绝大多数 Mac）：系统强制校验 entitlements。包一旦被抹掉 entitlements（2026-09-02 前的本工具会这样），微信启动即被杀。`doctor` 的 `Entitlements` 行必须是 `app-sandbox ✓, application-identifier ✓`；显示 `NONE` 就只能重装微信再打。打补丁必须用本工具默认的保留-entitlements 重签名，别手动 `codesign --remove-sign` / 裸 `--deep --sign -`。
+> - **SIP 关闭**：坏包也照样能开，所以「微信打得开」不构成任何证据，同样只看 `Entitlements` 行；给别人（SIP 开的机器）出主意前先在原厂 dmg 副本上验。
 
 > **两个变体二选一，互斥**：`--variant silent`（默认）留消息不弹提示；`--variant keeptip` 留消息且保留「对方撤回了一条消息」提示。想在两者间切换，直接用另一个 `--variant` 重打即可（补丁带原始字节校验 + 幂等，重复打安全）。`keeptip` 需要一个 `revoke-keeptip` 补丁点。已收录：269136（实机实测）、269579/269626（4.1.13，keeptip 点由同代签名 `+0x7a0` 定位）、269110/269111（由几何关系 `+0x794` 推导，**未经实机验证**）。**没收录的 4.x 构建号不用等我加**，两条路二选一：
 
@@ -149,16 +156,25 @@ wechattweak patch
 微信一更新，构建号变、地址全变。但补丁点的几何特征跨版本不变，所以**不用再人肉逆向**——跑自动定位器即可：
 
 ```bash
-# 对当前 /Applications/WeChat.app 自动定位，打印可粘贴的 config.json 条目
+# 路 0：参考实现多半已收录 —— 直接同步（revoke / revoke-keeptip / update 三个 target；已有构建号缺 update 也会补）
+python3 tools/sync_ref.py --dry-run && python3 tools/sync_ref.py
+
+# 对当前 /Applications/WeChat.app 自动定位防撤回点，打印可粘贴的 config.json 条目
 python3 tools/locate_revoke.py
 
 # 定位后直接把条目追加进本仓库 config.json（该构建号不存在时才加）
 python3 tools/locate_revoke.py --append
 
+# 再定位「阻止自动更新」的 8 处并追加进同一条目（走 ObjC 方法表，见下）
+python3 tools/locate_update.py --append
+
 # 也可指定 App 或直接指定 dylib
 python3 tools/locate_revoke.py -a /path/to/WeChat.app
 python3 tools/locate_revoke.py -d /path/to/wechat.dylib
+python3 tools/locate_update.py --dylib /path/to/wechat.dylib --version 2696xx
 ```
+
+**阻止自动更新的补丁点不靠字节签名**：微信 4.x 的更新器是 Objective-C 类 `XAppUpdateManager`，定位器解析 `__objc_classlist → class_ro_t → 方法表`，按方法名取 IMP——`startUpdater` / `checkForUpdates:` / `startBackgroundUpdatesCheck:` / `enableAutoUpdate:` 入口写 `ret`，`automaticallyDownloadsUpdates` / `canCheckForUpdate` 的 getter 改 `mov w0,#0; ret`、setter 改 `ret`（fzlzjerry/wechat-antirecall MAINTAINING.md 的方案）。按名找到后还要过入口指令形态校验（函数序言 / `ldrb w0,[x0,#f]; ret` / `strb w2,[x0,#f]`），名字对代码不对就拒绝生成。类名/方法名在 `signatures.json` 的 `update` 段（SSOT），CLI 内建同一份（`UpdateLocator.swift`）：config 缺 `update` 的 4.x 构建，`patch` 会现场定位，定位不到报错而非静默放行。
 
 定位器扫的是这组签名并要求**全片唯一命中**：`parseRevokeXML` 入口 `E` 满足 `E+0x270` 是 `cbz w0`、`E+0x270+delta` 是 `str <Xt>,[x19,#newmsgid]`（原始 `str x0`；已装 keeptip 变体则为 `str xzr`，两者都认）。
 
@@ -189,7 +205,9 @@ python3 tools/locate_revoke.py -d /path/to/wechat.dylib
 ## 常见问题
 
 - **打完补丁微信闪退 / 打不开（269579 起多人报告，#1038）**：2026-09-02 之前的版本重签名时把整个包的 entitlements 全抹掉了（沙盒、相机、麦克风、app-group、Team ID 全没），SIP 开启的 Mac 上 AMFI 直接把微信杀掉；维护者机器 SIP 关闭所以没发现。**已修**：现在逐组件保留原厂 entitlements 并注入 `cs.disable-library-validation` / `cs.allow-unsigned-executable-memory` 两个键（与 fzlzjerry/wechat-antirecall 同方案），重签名后逐项比对，丢一项就报错拒绝宣称成功。**已被老版本打坏的包救不回来**（entitlements 已从文件里删掉）：去 <https://mac.weixin.qq.com> 重装微信，拉最新代码 `swift build -c release`，再打一次。
-- **`WeChat is still running`**：⌘Q 后微信要几秒才真正退出，`pgrep -x WeChat` 没输出了再打。
+- **`WeChat is still running`**：⌘Q 后微信要几秒才真正退出，且 helper 进程比主进程晚几秒；`pgrep -fl WeChat.app/Contents/MacOS` 没输出了再打。
+- **防撤回用着用着又没了**：几乎一定是微信自动更新把整个 App 换了（`wechattweak versions` 看构建号是否变了）。2026-09-03 前的版本没有阻止更新，`defaults write com.tencent.xinWeChat SUEnableAutomaticChecks -bool NO` 也没用（微信每次启动把它改回来）。现在 `patch` 默认把更新入口钉死；重新打一次即可。之后想升级微信：去 <https://mac.weixin.qq.com> 下 dmg 覆盖安装，再打一次补丁。
+- **SIP 开着 / 关着分别怎么办**：先 `wechattweak doctor`。命令一样，判据不同——见上方[安装 & 使用](#安装--使用)里的说明；SIP 开的机器 `Entitlements` 行是 `NONE` 就必须重装微信。
 
 - **`Unsupported version`**：你的构建号不在 `config.json`。先 `python3 tools/sync_ref.py`（参考实现多半已收录），没有再 `python3 tools/locate_revoke.py --append`，然后 `swift build`。若加了本地条目仍报错，确认用的是本仓库编译出的二进制（默认已本地优先读 config，不必 `-c`）。
 - **`config.json has no revoke-keeptip patch point for WeChat build XXXXXX yet`**：**不是你的版本做不了**，是这个构建号的 keeptip 补丁点还没被收录（早期条目从 issue 评论手工收录，只带了静默那一个点）。keeptip 点 = 静默点 `+ delta`（按代 `0x794` / `0x7a0`），可自动算出：加 `--auto-locate` 让工具当场扫，或先 `python3 tools/locate_revoke.py --append && swift build -c release` 固化进 config。

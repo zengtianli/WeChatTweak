@@ -32,5 +32,27 @@
       "str_xzr": "7FB600F9",
       "field": "0x168"
     }
-  ]
+  ],
+  "update": {
+    "_comment": "屏蔽自动更新（update）定位规则（SSOT）。微信 4.x 的更新入口是 ObjC 类 XAppUpdateManager：解析 __objc_classlist → class_ro → 方法表，按方法名取 IMP。ret_methods 入口写 ret；zero_accessors 的 getter（ldrb w0,[x0,#f]; ret）改成 mov w0,#0; ret，setter（strb w2,[x0,#f]）改成 ret。来源：fzlzjerry/wechat-antirecall MAINTAINING.md §屏蔽更新；269579/269627 两个构建按此法得到的 8 个地址与参考实现逐一相同。",
+    "class": "XAppUpdateManager",
+    "ret_methods": [
+      "startUpdater",
+      "checkForUpdates:",
+      "startBackgroundUpdatesCheck:",
+      "enableAutoUpdate:"
+    ],
+    "zero_accessors": [
+      {
+        "getter": "automaticallyDownloadsUpdates",
+        "setter": "setAutomaticallyDownloadsUpdates:"
+      },
+      {
+        "getter": "canCheckForUpdate",
+        "setter": "setCanCheckForUpdate:"
+      }
+    ],
+    "ret": "C0035FD6",
+    "mov_w0_0": "00008052"
+  }
 }

@@ -145,7 +145,7 @@ struct RevokeLocator {
 
     // MARK: - Mach-O helpers
 
-    private static func arm64Slice(_ data: Data) throws -> Data {
+    static func arm64Slice(_ data: Data) throws -> Data {
         guard data.count >= 8 else { throw Error.notMachO }
         let magicBE = data.withUnsafeBytes { $0.loadUnaligned(as: UInt32.self).bigEndian }
         if magicBE == FAT_MAGIC || magicBE == FAT_CIGAM {
@@ -177,14 +177,14 @@ struct RevokeLocator {
         return data
     }
 
-    private struct Segment {
+    struct Segment {
         let vmaddr: UInt64
         let vmsize: UInt64
         let fileoff: UInt64
         let filesize: UInt64
     }
 
-    private static func parseSegments(_ slice: Data) throws -> [Segment] {
+    static func parseSegments(_ slice: Data) throws -> [Segment] {
         guard slice.count >= 32 else { throw Error.notMachO }
         let (magic, ncmds) = slice.withUnsafeBytes { raw -> (UInt32, UInt32) in
             (raw.loadUnaligned(as: UInt32.self).littleEndian,
@@ -215,7 +215,7 @@ struct RevokeLocator {
         return segments
     }
 
-    private static func fileOffsetToVA(_ segments: [Segment], _ fileOffset: UInt64) -> UInt64? {
+    static func fileOffsetToVA(_ segments: [Segment], _ fileOffset: UInt64) -> UInt64? {
         for seg in segments where seg.fileoff <= fileOffset && fileOffset < seg.fileoff + seg.filesize {
             return seg.vmaddr + (fileOffset - seg.fileoff)
         }

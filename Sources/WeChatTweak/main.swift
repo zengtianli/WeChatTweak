@@ -54,6 +54,12 @@ extension Tweak {
         )
         var autoLocate: Bool = false
 
+        @Flag(
+            inversion: .prefixedNo,
+            help: "Also neutralise WeChat's own auto-updater (XAppUpdateManager) so the next WeChat update cannot silently replace the patched bundle. On by default; --no-block-update keeps updates working (and the patch dies at the next update)."
+        )
+        var blockUpdate: Bool = true
+
         mutating func run() async throws {
             // Patching / re-signing a running app makes macOS kill it mid-flight (Code Signature
             // Invalid) and leaves a half-signed bundle; WeChat also takes several seconds to
@@ -69,15 +75,17 @@ extension Tweak {
             guard let config = (try await Config.load(url: options.config)).first(where: { $0.version == version }) else {
                 throw Error.unsupportedVersion
             }
-            print("Matched config: \(config)")
+            print("Matched config: build \(config.version), targets: \(config.targets.map(\.identifier).joined(separator: ", "))")
 
             print("------ Patch ------")
             print("Variant: \(variant.rawValue)")
+            print("Block auto-update: \(blockUpdate ? "yes" : "no (--no-block-update)")")
             let patched = try Command.patch(
                 app: options.app,
                 config: config,
                 variant: variant,
-                autoLocate: autoLocate
+                autoLocate: autoLocate,
+                blockUpdate: blockUpdate
             )
             print("Done!")
 
@@ -92,6 +100,23 @@ extension Tweak {
         }
     }
 
+}
+
+// MARK: Doctor
+extension Tweak {
+    struct Doctor: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(abstract: "Read-only check: build, SIP, signature/entitlements, sudo need, patch state — and the exact next command for this machine")
+
+        @OptionGroup
+        var options: Tweak.Options
+
+        mutating func run() async throws {
+            let configs = try await Config.load(url: options.config)
+            let report = try await WeChatTweak.Doctor.run(app: options.app, configs: configs)
+            print(report.text)
+            Darwin.exit(EXIT_SUCCESS)
+        }
+    }
 }
 
 // MARK: Tweak
@@ -114,7 +139,7 @@ struct Tweak: AsyncParsableCommand {
             case .unsupportedVersion:
                 return "Unsupported WeChat version"
             case .appRunning:
-                return "WeChat is still running — quit it completely first (⌘Q, then wait a few seconds; `pgrep -x WeChat` must print nothing), then re-run patch."
+                return "WeChat is still running — quit it completely first (⌘Q, then wait ~10 s: helper processes linger after the main one exits), then re-run patch. Check with `pgrep -fl WeChat.app/Contents/MacOS` — it must print nothing."
             }
         }
     }
@@ -184,7 +209,8 @@ struct Tweak: AsyncParsableCommand {
         abstract: "A command-line tool for tweaking WeChat.",
         subcommands: [
             Versions.self,
-            Patch.self
+            Patch.self,
+            Doctor.self
         ]
     )
 

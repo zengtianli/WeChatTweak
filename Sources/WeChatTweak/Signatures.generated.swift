@@ -9,3 +9,14 @@ extension RevokeLocator {
         Signature(name: "4.1.10-4.1.11 (<=269136)", builds: "268575-269136", cbzHex: "E00F0034", branchHex: "7F000014", delta: 0x794, strX0Hex: "60B600F9", strXzrHex: "7FB600F9", field: 0x168),
     ]
 }
+
+extension UpdateLocator {
+    static let className = "XAppUpdateManager"
+    static let retMethods: [String] = ["startUpdater", "checkForUpdates:", "startBackgroundUpdatesCheck:", "enableAutoUpdate:"]
+    static let zeroAccessors: [(getter: String, setter: String)] = [
+        (getter: "automaticallyDownloadsUpdates", setter: "setAutomaticallyDownloadsUpdates:"),
+        (getter: "canCheckForUpdate", setter: "setCanCheckForUpdate:"),
+    ]
+    static let retHex = "C0035FD6"
+    static let movW0ZeroHex = "00008052"
+}

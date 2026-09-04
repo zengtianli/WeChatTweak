@@ -11,6 +11,7 @@ struct Command {
     enum Error: @unchecked Sendable, LocalizedError {
         case executing(command: String, error: NSDictionary)
         case keeptipUnavailable(version: String)
+        case updateUnavailable(version: String, reason: String)
 
         var errorDescription: String? {
             switch self {
@@ -26,6 +27,13 @@ struct Command {
                     or curate it into config.json first:
                         python3 tools/locate_revoke.py --append && swift build -c release
                     """
+            case let .updateUnavailable(version, reason):
+                return """
+                    Cannot block WeChat's auto-updater for build \(version): \(reason)
+                    Without the block, WeChat's next update silently reverts the patch (it has, four times).
+                    Either curate the patch point:  python3 tools/locate_update.py --append && swift build -c release
+                    or, knowingly, keep updates on:  wechattweak patch --no-block-update
+                    """
             }
         }
     }
@@ -34,6 +42,21 @@ struct Command {
     /// (updaters, multi-instance) are always applied regardless of variant.
     static let silentRevokeIdentifier = "revoke"
     static let keeptipRevokeIdentifier = "revoke-keeptip"
+    /// 4.x: one target with all eight update patch points (fzlzjerry's naming).
+    static let updateIdentifier = "update"
+    /// 3.8.x (upstream config): the same XAppUpdateManager methods, one target each, in the main binary.
+    static let legacyUpdateIdentifiers: Set<String> = [
+        "startUpdater", "startBackgroundUpdatesCheck", "checkForUpdates", "enableAutoUpdate",
+        "automaticallyDownloadsUpdates", "canCheckForUpdate",
+    ]
+    static func isUpdateTarget(_ identifier: String) -> Bool {
+        identifier == updateIdentifier || legacyUpdateIdentifiers.contains(identifier)
+    }
+    static let dylibBinary = "Contents/Resources/wechat.dylib"
+    /// A 4.x config entry patches wechat.dylib; 3.8.x entries patch the main executable.
+    static func isWeChat4(_ config: Config) -> Bool {
+        config.targets.contains { $0.binary == dylibBinary }
+    }
 
     static func version(app: URL) async throws -> String? {
         try await Command.execute(command: "defaults read \(q(app.appendingPathComponent("Contents/Info.plist").path)) CFBundleVersion")
@@ -64,7 +87,7 @@ struct Command {
     /// WeChat 4.x targets `Contents/Resources/wechat.dylib`). Returns the unique
     /// bundle-relative paths that were touched, so `resign` can sign them first.
     @discardableResult
-    static func patch(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false) throws -> [String] {
+    static func patch(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true) throws -> [String] {
         // keeptip needs a `revoke-keeptip` target. If this build has none, either derive
         // it from the code signature (--auto-locate) or fail loudly — never silently
         // skip the revoke target and report success without touching a byte.
@@ -75,8 +98,31 @@ struct Command {
             targets.append(try autoLocatedKeeptipTarget(app: app, config: config))
         }
 
+        // Block auto-update (default). A 4.x build not yet curated with an `update` target is
+        // located live by walking the ObjC metadata — that lookup is by name and is followed by an
+        // instruction-shape check plus Patcher's expected-byte gate, so it needs no opt-in flag.
+        // Failing to find it is an error, not a silent skip: an unblocked updater is precisely
+        // how every previous "the patch stopped working" report happened.
+        let hasUpdate = targets.contains { Command.isUpdateTarget($0.identifier) }
+        if blockUpdate && !hasUpdate {
+            if Command.isWeChat4(config) {
+                do {
+                    targets.append(try autoLocatedUpdateTarget(app: app))
+                } catch {
+                    throw Error.updateUnavailable(version: config.version, reason: error.localizedDescription)
+                }
+            } else {
+                print("------ Update block ------")
+                print("config.json has no updater targets for this 3.x build — nothing to block; continuing.")
+            }
+        }
+
         var patched: [String] = []
         for target in targets {
+            if !blockUpdate && Command.isUpdateTarget(target.identifier) {
+                print("------ Target: \(target.identifier) skipped (--no-block-update) ------")
+                continue
+            }
             // The two revoke targets are mutually exclusive: pick the one matching the variant,
             // skip the other. Everything else (updaters, multi-instance) is applied unconditionally.
             switch target.identifier {
@@ -119,6 +165,17 @@ struct Command {
         return Config.Target(identifier: Command.keeptipRevokeIdentifier,
                              entries: try RevokeLocator.keeptipEntries(from: hit),
                              binary: relative)
+    }
+
+    /// Derives the `update` target by walking wechat.dylib's ObjC metadata (see `UpdateLocator`).
+    private static func autoLocatedUpdateTarget(app: URL) throws -> Config.Target {
+        let binary = app.appendingPathComponent(Command.dylibBinary)
+        let hits = try UpdateLocator.locate(binary: binary)
+        print("------ Auto-locate (update) ------")
+        for hit in hits {
+            print(String(format: "[arm64] %@ VA=0x%llx%@", hit.method, hit.va, hit.alreadyPatched ? " (already patched)" : ""))
+        }
+        return Config.Target(identifier: Command.updateIdentifier, entries: hits.map(\.entry), binary: Command.dylibBinary)
     }
 
     /// Re-sign after patching. See `Resigner.swift` for why this is more than

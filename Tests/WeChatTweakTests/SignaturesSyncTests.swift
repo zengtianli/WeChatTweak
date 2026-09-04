@@ -8,8 +8,13 @@ final class SignaturesSyncTests: XCTestCase {
         struct Gen: Decodable {
             let name: String, builds: String, cbz: String, b: String, delta: String, str_x0: String, str_xzr: String, field: String
         }
+        struct Accessor: Decodable { let getter: String, setter: String }
+        struct Update: Decodable {
+            let `class`: String, ret_methods: [String], zero_accessors: [Accessor], ret: String, mov_w0_0: String
+        }
         let off_cbz: String
         let generations: [Gen]
+        let update: Update
     }
 
     private func repoRoot() -> URL {
@@ -32,6 +37,20 @@ final class SignaturesSyncTests: XCTestCase {
             XCTAssertEqual(g.str_xzr, s.strXzrHex)
             XCTAssertEqual(UInt64(g.field.dropFirst(2), radix: 16), s.field)
         }
+    }
+
+    func testGeneratedUpdateRulesMatchJSON() throws {
+        let url = repoRoot().appendingPathComponent("signatures.json")
+        let doc = try JSONDecoder().decode(Doc.self, from: Data(contentsOf: url))
+        XCTAssertEqual(doc.update.class, UpdateLocator.className)
+        XCTAssertEqual(doc.update.ret_methods, UpdateLocator.retMethods, "ret_methods drifted — run tools/gen_signatures.py")
+        XCTAssertEqual(doc.update.zero_accessors.map(\.getter), UpdateLocator.zeroAccessors.map(\.getter))
+        XCTAssertEqual(doc.update.zero_accessors.map(\.setter), UpdateLocator.zeroAccessors.map(\.setter))
+        XCTAssertEqual(doc.update.ret, UpdateLocator.retHex)
+        XCTAssertEqual(doc.update.mov_w0_0, UpdateLocator.movW0ZeroHex)
+        // hex spellings are the instruction words the locator hardcodes
+        XCTAssertEqual(RevokeLocator.Signature.word(UpdateLocator.retHex), UpdateLocator.retWord)
+        XCTAssertEqual(RevokeLocator.Signature.word(UpdateLocator.movW0ZeroHex), UpdateLocator.movW0ZeroWord)
     }
 
     /// Each generation must be internally consistent: `b` jumps where the `cbz` jumped,

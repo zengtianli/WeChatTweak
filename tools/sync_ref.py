@@ -3,11 +3,11 @@
 sync_ref.py — 从参考实现 fzlzjerry/wechat-antirecall 的 patches.json 同步防撤回补丁点进本仓库 config.json。
 
 为什么：微信几乎每周发热修，参考实现一般当天就收录新构建号；自己每次手工逆向 / 手抄是重复劳动。
-本脚本只搬 `revoke`（静默）和 `revoke-tip`（→ 本仓库叫 `revoke-keeptip`）两个 target，
-不搬 update / multiInstance / runtime-tip（本 fork 不支持这些机制）。
+本脚本搬 `revoke`（静默）、`revoke-tip`（→ 本仓库叫 `revoke-keeptip`）和 `update`（屏蔽自动更新）三个 target，
+不搬 multiInstance / runtime-tip（本 fork 不支持这些机制）。
 
 安全阀：
-- 只新增本仓库没有的构建号，从不覆盖已有条目。
+- 只新增本仓库没有的构建号，从不覆盖已有条目；已有构建号缺 `update` 而参考实现有 → 只补这一个 target（追加，不动其他）。
 - 若本机 /Applications/WeChat.app 的构建号在本次新增里，逐字节对本机 wechat.dylib 校验 `expected`，
   不匹配就整次放弃（exit 2）—— 参考数据错了不能带进仓库。其他构建号本机无法校验，靠 patch 时的
   expected 门兜底（打错构建号会拒写）。
@@ -30,7 +30,7 @@ import locate_revoke as L  # noqa: E402  Mach-O 工具函数复用，不另写�
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CONFIG = os.path.join(ROOT, "config.json")
 REF_URL = "https://raw.githubusercontent.com/fzlzjerry/wechat-antirecall/main/patches.json"
-ID_MAP = {"revoke": "revoke", "revoke-tip": "revoke-keeptip"}
+ID_MAP = {"revoke": "revoke", "revoke-tip": "revoke-keeptip", "update": "update"}
 DYLIB_REL = "Contents/Resources/wechat.dylib"
 
 
@@ -111,41 +111,53 @@ def main():
     cfg = json.load(open(args.config, encoding="utf-8"))
     have = {str(c["version"]) for c in cfg}
 
-    new = []
+    new, filled = [], []   # filled: 已有构建号只补 update target
+    local_by_ver = {str(c["version"]): c for c in cfg}
     for r in ref:
-        if str(r["version"]) in have:
-            continue
+        v = str(r["version"])
         conv = convert(r)
-        if conv:
+        if not conv:
+            continue
+        if v not in have:
             new.append(conv)
-    if not new:
-        print("参考实现没有本仓库缺的构建号（本仓库 %d 个，参考 %d 个）。" % (len(cfg), len(ref)))
+            continue
+        mine_local = local_by_ver[v]
+        upd = next((t for t in conv["targets"] if t["identifier"] == "update"), None)
+        if upd and not any(t["identifier"] == "update" for t in mine_local["targets"]):
+            filled.append((mine_local, upd))
+    if not new and not filled:
+        print("参考实现没有本仓库缺的构建号 / 缺的 update target（本仓库 %d 个，参考 %d 个）。" % (len(cfg), len(ref)))
         return
 
     build = local_build(args.app)
-    mine = next((n for n in new if n["version"] == build), None)
-    if mine:
-        bad = verify_against_dylib(os.path.join(args.app, DYLIB_REL), mine["targets"])
+    to_verify = [t for n in new if n["version"] == build for t in n["targets"]] + \
+                [upd for (loc, upd) in filled if str(loc["version"]) == build]
+    if to_verify:
+        bad = verify_against_dylib(os.path.join(args.app, DYLIB_REL), to_verify)
         if bad:
             for b in bad:
                 print("  ✗", *b)
             sys.exit(2)
-        print("本机构建 %s 在新增里，已逐字节校验 expected 通过。" % build)
+        print("本机构建 %s 在本次变更里，已逐字节校验 expected 通过。" % build)
     else:
-        print("本机构建 %s 不在新增里，新增条目仅能靠 patch 时的 expected 门兜底。" % build)
+        print("本机构建 %s 不在本次变更里，新增条目仅能靠 patch 时的 expected 门兜底。" % build)
 
     new.sort(key=lambda n: int(n["version"]), reverse=True)
     for n in new:
         ids = ",".join(t["identifier"] for t in n["targets"])
         print("  + %s  [%s]" % (n["version"], ids))
+    for loc, _upd in sorted(filled, key=lambda x: int(x[0]["version"]), reverse=True):
+        print("  ~ %s  [+update]" % loc["version"])
     if args.dry_run:
         print("(dry-run，未写 %s)" % os.path.relpath(args.config, ROOT))
         return
+    for loc, upd in filled:
+        loc["targets"].append(upd)
     merged = sorted(new + cfg, key=lambda c: int(c["version"]), reverse=True)
     with open(args.config, "w", encoding="utf-8") as f:
         json.dump(merged, f, ensure_ascii=False, indent=2)
         f.write("\n")
-    print("已写入 %d 条到 %s，记得 swift build -c release。" % (len(new), os.path.relpath(args.config, ROOT)))
+    print("已写入：新增 %d 条、补 update %d 条到 %s，记得 swift build -c release。" % (len(new), len(filled), os.path.relpath(args.config, ROOT)))
 
 
 if __name__ == "__main__":
