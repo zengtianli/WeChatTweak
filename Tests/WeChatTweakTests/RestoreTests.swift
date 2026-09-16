@@ -69,6 +69,23 @@ final class RestoreTests: XCTestCase {
         XCTAssertEqual(try MachOFixture.word(at: plant, in: binary(in: app)), MachOFixture.word("40100034"))
     }
 
+    /// The silent and keeptip targets share the selector entry. Restoring all
+    /// targets must coalesce their identical inverse writes, not mistake them
+    /// for a conflicting overlap.
+    func testRestoreCoalescesSharedSilentAndKeeptipEntry() throws {
+        let app = try bundle(word: "82000014")
+        defer { try? FileManager.default.removeItem(at: app) }
+        let silent = try Config.Entry(arch: .arm64, addr: va, asmHex: "82000014", expectedHex: ["40100034"])
+        let keeptip = try Config.Entry(arch: .arm64, addr: va, asmHex: "40100034", expectedHex: ["40100034", "82000014"])
+        let cfg = Config(version: "269627", targets: [
+            Config.Target(identifier: "revoke", entries: [silent], binary: nil),
+            Config.Target(identifier: "revoke-keeptip", entries: [keeptip], binary: nil),
+        ])
+
+        try Command.restore(app: app, config: cfg)
+        XCTAssertEqual(try MachOFixture.word(at: plant, in: binary(in: app)), MachOFixture.word("40100034"))
+    }
+
     /// Foreign bytes (another tool's patch, or a build mismatch) → refuse, touch nothing.
     func testRestoreRefusesForeignBytes() throws {
         let app = try bundle(word: "DEADBEEF")

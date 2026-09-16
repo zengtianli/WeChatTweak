@@ -408,6 +408,66 @@
     "source": "fzlzjerry/wechat-antirecall patches.json"
   },
   {
+    "version": "269602",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "44de938",
+            "expected": "F44FBEA9FD7B01A9",
+            "asm": "00008052C0035FD6"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "44de938",
+            "expected": [
+              "F44FBEA9FD7B01A9",
+              "00008052C0035FD6"
+            ],
+            "asm": "F44FBEA9FD7B01A9"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4941e44",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "49425e4",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          }
+        ]
+      },
+      {
+        "identifier": "multiInstance",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "27370c",
+            "expected": "FF0306D1FC6F14A9",
+            "asm": "20008052C0035FD6"
+          }
+        ]
+      }
+    ],
+    "source": "EchoXml/WeChatTweak feature/wechat-269602 (30fa03e, 8170c9b, 19e9b0a); local arm64 signature verification for revoke-keeptip"
+  },
+  {
     "version": "269579",
     "targets": [
       {
