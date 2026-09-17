@@ -60,4 +60,36 @@ final class ResignerTests: XCTestCase {
         XCTAssertFalse(found.contains("/Contents/Resources/data.bin"), "plain data is not code")
         XCTAssertFalse(found.contains("/Contents/Frameworks/X.framework/Versions/Current"), "symlink skipped")
     }
+
+    /// A failed sign of a locked bundle used to leave a locked `.cstemp` that broke every retry.
+    func testFailedSignOfLockedBundleLeavesNoTempAndRetrySucceeds() throws {
+        let fm = FileManager.default
+        let base = fm.temporaryDirectory.appendingPathComponent("wt-cstemp-\(UUID().uuidString)", isDirectory: true)
+        let app = base.appendingPathComponent("Locked.app", isDirectory: true)
+        let macos = app.appendingPathComponent("Contents/MacOS", isDirectory: true)
+        let exe = macos.appendingPathComponent("Locked")
+        defer {
+            if let e = fm.enumerator(atPath: base.path) {
+                for case let rel as String in e { try? fm.setAttributes([.immutable: false], ofItemAtPath: base.appendingPathComponent(rel).path) }
+            }
+            try? fm.removeItem(at: base)
+        }
+        try fm.createDirectory(at: macos, withIntermediateDirectories: true)
+        try fm.copyItem(atPath: "/bin/echo", toPath: exe.path)
+        let info: [String: Any] = ["CFBundleExecutable": "Locked", "CFBundleIdentifier": "test.locked"]
+        try PropertyListSerialization.data(fromPropertyList: info, format: .xml, options: 0)
+            .write(to: app.appendingPathComponent("Contents/Info.plist"))
+        let sign = Process()
+        sign.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        sign.arguments = ["--force", "--sign", "-", app.path]
+        try sign.run(); sign.waitUntilExit()
+        XCTAssertEqual(sign.terminationStatus, 0)
+
+        try fm.setAttributes([.immutable: true], ofItemAtPath: exe.path)
+        XCTAssertThrowsError(try Resigner.resign(app: app, patchedBinaries: []))
+        try fm.setAttributes([.immutable: false], ofItemAtPath: exe.path)
+        XCTAssertEqual(try fm.contentsOfDirectory(atPath: macos.path), ["Locked"], "no .cstemp left behind")
+
+        try Resigner.resign(app: app, patchedBinaries: [])
+    }
 }

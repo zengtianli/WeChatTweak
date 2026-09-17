@@ -73,6 +73,7 @@ struct Resigner {
     // MARK: - Entry point
 
     static func resign(app: URL, patchedBinaries: [URL]) throws {
+        removeSigningLeftovers(in: app)
         let snapshot = try capture(app: app)
         print(String(format: "[resign] %d signed code objects, %d with entitlements",
                      snapshot.entries.count, snapshot.entries.filter { $0.plist != nil }.count))
@@ -186,7 +187,38 @@ struct Resigner {
             args += ["--entitlements", plist.path]
         }
         args.append(url.path)
-        try run("/usr/bin/codesign", args)
+        do {
+            try run("/usr/bin/codesign", args)
+        } catch {
+            removeSigningLeftovers(in: url)
+            throw error
+        }
+    }
+
+    /// codesign writes `<executable>.cstemp` beside the binary and renames it on success. When
+    /// signing fails (e.g. a locked `uchg` bundle) the temp stays behind carrying the lock; every
+    /// retry then fails on that "subcomponent" and stacks another `.cstemp.cstemp` in WeChat.app.
+    static func removeSigningLeftovers(in url: URL) {
+        let fm = FileManager.default
+        var isDir: ObjCBool = false
+        guard fm.fileExists(atPath: url.path, isDirectory: &isDir) else { return }
+        var leftovers: [URL] = []
+        if isDir.boolValue {
+            let e = fm.enumerator(at: url, includingPropertiesForKeys: nil, options: [], errorHandler: { _, _ in true })
+            while let item = e?.nextObject() as? URL {
+                if item.lastPathComponent.contains(".cstemp") { leftovers.append(item) }
+            }
+        } else {
+            let prefix = url.lastPathComponent + ".cstemp"
+            let siblings = (try? fm.contentsOfDirectory(at: url.deletingLastPathComponent(), includingPropertiesForKeys: nil)) ?? []
+            leftovers = siblings.filter { $0.lastPathComponent.hasPrefix(prefix) }
+        }
+        for item in leftovers {
+            try? fm.setAttributes([.immutable: false], ofItemAtPath: item.path)
+            if (try? fm.removeItem(at: item)) != nil {
+                print("[resign] removed stale signing temp \(item.lastPathComponent)")
+            }
+        }
     }
 
     // MARK: - Bundle walk / inspection
@@ -203,7 +235,7 @@ struct Resigner {
             let ext = url.pathExtension.lowercased()
             let isCode = (v.isDirectory == true && bundles.contains(ext))
                 || (v.isRegularFile == true && (loose.contains(ext) || FileManager.default.isExecutableFile(atPath: url.path)))
-            guard isCode, seen.insert(url.standardizedFileURL.path).inserted else { continue }
+            guard isCode, !url.lastPathComponent.contains(".cstemp"), seen.insert(url.standardizedFileURL.path).inserted else { continue }
             out.append(url)
         }
         return out
