@@ -72,7 +72,7 @@
 | 269631 | 4.1.13.63 官网版，arm64 | ✓（原版副本已验证默认 keeptip 写入、体检和还原；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 269627 | 4.1.13 | ✓（本机已打，补丁点由 `tools/locate_revoke.py` 定位） | ✓（`tools/locate_update.py` 定位，8 处） |
 | 269626 | 4.1.13 | ✓（本机实测） | —（该构建已被 269627 替代，未收录） |
-| 269602 | 4.1.13 App Store 版，arm64 | ✓（`silent` 与 `keeptip` 均有原始字节校验；真实收撤回仍待实测） | 不适用：App Store 版没有微信内置更新器，由 App Store 负责更新，`patch` 自动跳过这一步；想保住补丁请在 App Store 设置里关闭自动更新。另支持 `multiInstance`（同 bundle-id 副本并行启动验证） |
+| 269602 | 4.1.13 App Store 版，arm64 | ✓（`silent` 与 `keeptip` 均有原始字节校验；2.3.1 起重签时去掉 App Store 版特有的受限权限 `com.apple.developer.team-identifier`，否则系统拒绝启动（#4）；App Store 原版副本已实测打补丁后能启动；真实收撤回仍待实测） | 不适用：App Store 版没有微信内置更新器，由 App Store 负责更新，`patch` 自动跳过这一步；想保住补丁请在 App Store 设置里关闭自动更新。另支持 `multiInstance`（同 bundle-id 副本并行启动验证） |
 | 269579 | 4.1.13 | ✓ | ✓ |
 | 269136 | 4.1.11 | ✓（本机实测） | ✓ |
 | 268575 ~ 269624 另 25 个构建号 | 4.1.10 ~ 4.1.13 | ✓（`tools/sync_ref.py` 自 fzlzjerry/wechat-antirecall 同步，打补丁时仍过 `expected` 字节门） | ✓（同上同步） |

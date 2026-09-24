@@ -23,6 +23,25 @@ final class ResignerTests: XCTestCase {
         XCTAssertNil(Resigner.inject(nil), "code without entitlements must stay without")
     }
 
+    /// #4: the App Store build's main executable carries com.apple.developer.team-identifier;
+    /// an ad-hoc signature with it is refused at launch, so the re-sign profile must drop it
+    /// while keeping everything else (sandbox, application-identifier, app groups).
+    func testInjectDropsRestrictedDeveloperEntitlements() throws {
+        let original: [String: Any] = [
+            "com.apple.application-identifier": "5A4RE8SF68.com.tencent.xinWeChat",
+            "com.apple.developer.team-identifier": "5A4RE8SF68",
+            "com.apple.security.app-sandbox": true,
+            "com.apple.security.application-groups": ["5A4RE8SF68.com.tencent.xinWeChat"],
+        ]
+        let out = try XCTUnwrap(Resigner.inject(plist(original)))
+        let dict = try XCTUnwrap(PropertyListSerialization.propertyList(from: out, options: [], format: nil) as? [String: Any])
+        XCTAssertNil(dict["com.apple.developer.team-identifier"])
+        XCTAssertEqual(dict["com.apple.application-identifier"] as? String, "5A4RE8SF68.com.tencent.xinWeChat")
+        XCTAssertEqual(dict["com.apple.security.app-sandbox"] as? Bool, true)
+        XCTAssertEqual(dict["com.apple.security.application-groups"] as? [String], ["5A4RE8SF68.com.tencent.xinWeChat"])
+        XCTAssertEqual(dict.count, 5)
+    }
+
     func testInjectIsIdempotent() throws {
         let once = try XCTUnwrap(Resigner.inject(plist(["a": 1])))
         let twice = try XCTUnwrap(Resigner.inject(once))

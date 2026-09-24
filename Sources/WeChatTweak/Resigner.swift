@@ -13,7 +13,8 @@
 //
 //  This mirrors the flow fzlzjerry/wechat-antirecall validated across its users:
 //    1. snapshot the entitlements of every signed code object in the bundle;
-//    2. inject two keys into each non-empty profile so an ad-hoc identity can still run it:
+//    2. inject two keys into each non-empty profile so an ad-hoc identity can still run it
+//       (and drop restricted com.apple.developer.* keys an ad-hoc signature may not carry):
 //       - `com.apple.security.cs.disable-library-validation`: the re-signed frameworks are
 //         Team-less while the main binary's entitlements still name Tencent's Team ID —
 //         without this, loading the first framework aborts with "different Team IDs";
@@ -260,7 +261,18 @@ struct Resigner {
               var dict = (try? PropertyListSerialization.propertyList(from: plist, options: [], format: nil)) as? [String: Any]
         else { return plist }
         for (k, v) in injectedEntitlements { dict[k] = v }
+        for k in dict.keys where isRestricted(k) { dict[k] = nil }
         return (try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)) ?? plist
+    }
+
+    /// `com.apple.developer.*` entitlements are restricted: only an Apple-issued signature or a
+    /// provisioning profile can vouch for them, never an ad-hoc one. The Mac App Store build of
+    /// WeChat carries `com.apple.developer.team-identifier` on its main executable; kept through
+    /// an ad-hoc re-sign, amfid refuses the launch ("The file is adhoc signed but contains
+    /// restricted entitlements", -424 → "WeChat.app can't be opened", #4). The direct-download
+    /// build has none, which is why it was unaffected.
+    static func isRestricted(_ key: String) -> Bool {
+        key.hasPrefix("com.apple.developer.")
     }
 
     static func plistsEqual(_ a: Data, _ b: Data) -> Bool {
