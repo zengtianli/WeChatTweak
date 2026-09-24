@@ -26,7 +26,7 @@
 //    4. re-read every profile; anything that drifted is restored explicitly, deepest code
 //       object first, root last; still drifted → fail loudly (never report success on a
 //       bundle whose sandbox / camera / mic / app-group profile silently vanished);
-//    5. `codesign --verify --deep --strict`; quarantine strip is best-effort.
+//    5. strip only com.apple.quarantine (best-effort), then `codesign --verify --deep --strict`.
 //
 
 import Foundation
@@ -96,14 +96,21 @@ struct Resigner {
             guard drifted.isEmpty else { throw Error.entitlementsMismatch(drifted) }
         }
 
+        stripQuarantine(app)
+        // Verify last, so the gate covers the bundle exactly as it is left on disk.
         try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", "--verbose=2", app.path])
         print("[resign] codesign --verify --deep --strict: OK")
+    }
 
-        // Best-effort: WeChat ships read-only nested files (0444 gpu_shader_cache.bin) and
-        // macOS 15+ adds an OS-protected com.apple.provenance xattr; either makes xattr(1)
-        // fail with EACCES/EPERM on an otherwise valid, signed bundle.
-        if (try? run("/usr/bin/xattr", ["-cr", app.path])) == nil {
-            print("[resign] warning: xattr -cr could not clear every nested file; signature is valid, ignoring")
+    /// Remove only the quarantine flag. Never `xattr -c`: codesign stores the signature of a
+    /// non-Mach-O file inside a code directory (4.1.15 / 270100 ships
+    /// XPlayer.app/Contents/Frameworks/vk_swiftshader_icd.json) in com.apple.cs.* xattrs, and
+    /// clearing them leaves "code object is not signed at all" — a bundle SIP refuses to run.
+    /// Best-effort: read-only nested files (0444 gpu_shader_cache.bin) and the OS-protected
+    /// com.apple.provenance xattr can make xattr(1) fail on an otherwise valid bundle.
+    static func stripQuarantine(_ app: URL) {
+        if (try? run("/usr/bin/xattr", ["-dr", "com.apple.quarantine", app.path])) == nil {
+            print("[resign] note: xattr could not remove com.apple.quarantine everywhere (often it was not set); ignoring")
         }
     }
 

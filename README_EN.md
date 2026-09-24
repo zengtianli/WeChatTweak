@@ -13,7 +13,7 @@ A command-line tool for modifying the WeChat client on macOS.
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `269631` (4.x patches: arm64).
+> Anti-recall + auto-updater block for selected WeChat builds through `270100` (4.x patches: arm64).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -32,7 +32,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 > **How this fork relates to upstream**: upstream [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak)
 > (13.8k★, 1.6k forks) **has had no commits since February 2026**, while WeChat 4.x moved all recall logic into
 > `Contents/Resources/wechat.dylib`, invalidating every patch location it knew. This fork picks up from 4.1.10 (build 268880),
-> now covering selected builds through **build 269631** (not every intervening build; the 4.x patches target arm64), and adds:
+> now covering selected builds through **build 270100 (4.1.15)** (not every intervening build; the 4.x patches target arm64), and adds:
 >
 > - Patching **a specified target dylib** (the 4.x logic is no longer in the main executable)
 > - **Original-byte verification before writing**: a wrong version produces an error instead of a blind write that damages WeChat
@@ -41,7 +41,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 
 ## Features
 
-| Feature | Description | WeChat 3.8.x | WeChat 4.x (listed builds through 269631) |
+| Feature | Description | WeChat 3.8.x | WeChat 4.x (listed builds through 270100) |
 | --- | --- | :---: | :---: |
 | **Anti-recall (silent variant)** | Recalled messages remain unchanged in the chat, with no notice | ✓ | ✓ (current release) |
 | **Anti-recall (keep-notice variant)** | Keeps the message **and** the “The other party recalled a message” notice | ✓ | ⚠️ (`--variant keeptip`: notices in **private chats**; **group chats** remain silent) |
@@ -60,12 +60,13 @@ and uses this repository's `config.json` patch database (so the installed app ca
 
 The tool matches **build numbers** (`CFBundleVersion`, the number printed by `wechattweak versions`), not marketing version numbers.
 
-Compatibility currently targets the **latest stable release on the official WeChat website**. The Tencent update source was checked on 2026-09-12 and reported **4.1.13.63 (build 269631)**, for which Apple Silicon (arm64) patches are available. Build 269602 (the App Store edition) is also listed. For other builds not yet listed, update to this release from the [WeChat website](https://mac.weixin.qq.com/) and reapply the patch; configurations for previously supported builds are retained. Even if the website and App Store editions both display 4.1.13, check their build numbers separately: their addresses are not interchangeable.
+Compatibility currently targets the **latest stable release on the official WeChat website**. The official installer was checked on 2026-09-24 and is **4.1.15 (build 270100)**, for which Apple Silicon (arm64) patches are available. Builds 269631 (website edition) and 269602 (App Store edition) of 4.1.13 are also listed. For other builds not yet listed, update to this release from the [WeChat website](https://mac.weixin.qq.com/) and reapply the patch; configurations for previously supported builds are retained. Even if the website and App Store editions both display 4.1.13, check their build numbers separately: their addresses are not interchangeable.
 
-The sample used to locate build 269631 came from the [official Tencent installer](https://dldir1.qq.com/weixin/Universal/Mac/xWeChatMac_universal_4.1.13.63_269631.dmg), with SHA-256 `b247b2cc9dd2122024d6facf9f3c464f2564f106266851d439853bacc7013de9`. GUI users can refresh the patch database by quitting and reopening WeChatUnrevoke while online; this configuration update does not require reinstalling the GUI. WeChat upgrades remove the patch, so re-enable and check protection after upgrading.
+The sample for build 270100 is the installer downloaded on 2026-09-24 from the [official download link](https://dldir1.qq.com/weixin/Universal/Mac/WeChatMac.dmg) (released 2026-09-18), SHA-256 `b73319ea3ef7f5f2f6f1403b0bed87ac75b5f5b70f0951ea61bad2d9449857f8`. The sample used to locate build 269631 came from the [official Tencent installer](https://dldir1.qq.com/weixin/Universal/Mac/xWeChatMac_universal_4.1.13.63_269631.dmg), with SHA-256 `b247b2cc9dd2122024d6facf9f3c464f2564f106266851d439853bacc7013de9`. GUI users can refresh the patch database by quitting and reopening WeChatUnrevoke while online; this configuration update does not require reinstalling the GUI. WeChat upgrades remove the patch, so re-enable and check protection after upgrading.
 
 | Build | WeChat version | Anti-recall | Block automatic updates |
 | --- | --- | :---: | :---: |
+| 270100 | 4.1.15 website edition, arm64 | ✓ (keeptip writing, diagnostics, signature verification, and restoration verified on a copy of the official installer; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 269631 | 4.1.13.63 website edition, arm64 | ✓ (default keeptip writing, diagnostics, and restoration verified on a pristine copy; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 269627 | 4.1.13 | ✓ (patched locally; locations found by `tools/locate_revoke.py`) | ✓ (`tools/locate_update.py`, 8 locations) |
 | 269626 | 4.1.13 | ✓ (tested locally) | — (superseded by 269627; not included) |

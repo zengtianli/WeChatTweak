@@ -92,4 +92,38 @@ final class ResignerTests: XCTestCase {
 
         try Resigner.resign(app: app, patchedBinaries: [])
     }
+
+    /// 4.1.15 (270100) ships a JSON file inside a nested app's Frameworks; codesign keeps
+    /// that file's signature in com.apple.cs.* xattrs. Stripping quarantine after signing
+    /// must leave those alone, or the bundle reads "code object is not signed at all".
+    func testQuarantineStripKeepsXattrStoredSignatures() throws {
+        let fm = FileManager.default
+        let app = fm.temporaryDirectory.appendingPathComponent("wechattweak-xattr-\(UUID().uuidString).app")
+        defer { try? fm.removeItem(at: app) }
+        let macos = app.appendingPathComponent("Contents/MacOS")
+        let frameworks = app.appendingPathComponent("Contents/Frameworks")
+        try fm.createDirectory(at: macos, withIntermediateDirectories: true)
+        try fm.createDirectory(at: frameworks, withIntermediateDirectories: true)
+        try fm.copyItem(at: URL(fileURLWithPath: "/usr/bin/true"), to: macos.appendingPathComponent("Fixture"))
+        try plist(["CFBundleExecutable": "Fixture", "CFBundleIdentifier": "test.wechattweak.xattr"])
+            .write(to: app.appendingPathComponent("Contents/Info.plist"))
+        try Data("{}".utf8).write(to: frameworks.appendingPathComponent("icd.json"))
+
+        func codesign(_ args: [String]) -> Int32 {
+            let p = Process()
+            p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+            p.arguments = args
+            p.standardOutput = FileHandle.nullDevice
+            p.standardError = FileHandle.nullDevice
+            try? p.run()
+            p.waitUntilExit()
+            return p.terminationStatus
+        }
+        XCTAssertEqual(codesign(["--force", "--deep", "--sign", "-", app.path]), 0)
+        XCTAssertEqual(codesign(["--verify", "--deep", "--strict", app.path]), 0)
+
+        Resigner.stripQuarantine(app)
+        XCTAssertEqual(codesign(["--verify", "--deep", "--strict", app.path]), 0,
+                       "quarantine strip destroyed the xattr-stored signature of Frameworks/icd.json")
+    }
 }
