@@ -60,7 +60,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 
 The tool matches **build numbers** (`CFBundleVersion`, the number printed by `wechattweak versions`), not marketing version numbers.
 
-Compatibility currently targets the **latest stable release on the official WeChat website**. The Tencent update source was checked on 2026-09-12 and reported **4.1.13.63 (build 269631)**, for which Apple Silicon (arm64) patches are available. For older builds not yet listed (such as 269602), update to this release from the [WeChat website](https://mac.weixin.qq.com/) and reapply the patch; configurations for previously supported builds are retained. Even if the website and App Store editions both display 4.1.13, check their build numbers separately: their addresses are not interchangeable.
+Compatibility currently targets the **latest stable release on the official WeChat website**. The Tencent update source was checked on 2026-09-12 and reported **4.1.13.63 (build 269631)**, for which Apple Silicon (arm64) patches are available. Build 269602 (the App Store edition) is also listed. For other builds not yet listed, update to this release from the [WeChat website](https://mac.weixin.qq.com/) and reapply the patch; configurations for previously supported builds are retained. Even if the website and App Store editions both display 4.1.13, check their build numbers separately: their addresses are not interchangeable.
 
 The sample used to locate build 269631 came from the [official Tencent installer](https://dldir1.qq.com/weixin/Universal/Mac/xWeChatMac_universal_4.1.13.63_269631.dmg), with SHA-256 `b247b2cc9dd2122024d6facf9f3c464f2564f106266851d439853bacc7013de9`. GUI users can refresh the patch database by quitting and reopening WeChatUnrevoke while online; this configuration update does not require reinstalling the GUI. WeChat upgrades remove the patch, so re-enable and check protection after upgrading.
 
@@ -69,6 +69,7 @@ The sample used to locate build 269631 came from the [official Tencent installer
 | 269631 | 4.1.13.63 website edition, arm64 | ✓ (default keeptip writing, diagnostics, and restoration verified on a pristine copy; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 269627 | 4.1.13 | ✓ (patched locally; locations found by `tools/locate_revoke.py`) | ✓ (`tools/locate_update.py`, 8 locations) |
 | 269626 | 4.1.13 | ✓ (tested locally) | — (superseded by 269627; not included) |
+| 269602 | 4.1.13 App Store edition, arm64 | ✓ (original bytes checked for both `silent` and `keeptip`; real-chat recall testing remains for the user) | Not applicable: the App Store edition has no in-app updater (the App Store updates it), so `patch` skips this step; turn off App Store automatic updates to keep the patch. Also supports `multiInstance` (verified by launching same-bundle-id copies in parallel) |
 | 269579 | 4.1.13 | ✓ | ✓ |
 | 269136 | 4.1.11 | ✓ (tested locally) | ✓ |
 | 25 other builds within 268575 ~ 269624 | 4.1.10 ~ 4.1.13 | ✓ (synced from fzlzjerry/wechat-antirecall by `tools/sync_ref.py`; patching still checks the `expected` bytes) | ✓ (synced in the same way) |

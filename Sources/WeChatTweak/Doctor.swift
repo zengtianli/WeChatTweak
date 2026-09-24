@@ -58,6 +58,7 @@ struct Doctor {
         /// `patched` / `pristine` / `unknown` / nil when the build has no such target.
         var antiRevokeSilent: String?
         var antiRevokeKeeptip: String?
+        /// Also `notApplicable`: App Store install without an in-app updater (nothing to block).
         var updateBlock: String?
         var updateSource: String
         var sparkle: [String: String]
@@ -145,6 +146,7 @@ struct Doctor {
         // 6. patch state
         var silent: Patcher.State?, keeptip: Patcher.State?, update: Patcher.State?
         var updateSource = "config.json"
+        var updateNotApplicable = false
         if let config {
             func state(of identifier: String) -> Patcher.State? {
                 guard let t = config.targets.first(where: { $0.identifier == identifier }) else { return nil }
@@ -163,16 +165,21 @@ struct Doctor {
             update = state(of: Command.updateIdentifier)
             if update == nil, Command.isWeChat4(config), fm.fileExists(atPath: dylib.path) {
                 // Not curated for this build yet — the locator can still tell us the live state.
-                if let hits = try? UpdateLocator.locate(binary: dylib) {
+                do {
+                    let hits = try UpdateLocator.locate(binary: dylib)
                     let patched = Set(hits.map(\.alreadyPatched))
                     update = patched.count == 1 ? (patched.first! ? .patched : .pristine) : .unknown
                     updateSource = "auto-located (not in config.json yet)"
-                }
+                } catch where Command.updaterAbsentOnAppStore(app: app, error: error) {
+                    updateNotApplicable = true
+                    updateSource = Command.appStoreUpdateNote
+                } catch {}
             }
         }
         func show(_ s: Patcher.State?) -> String { s.map(\.rawValue) ?? "n/a" }
         lines.append("Anti-revoke:  silent=\(show(silent)) keeptip=\(show(keeptip))")
-        lines.append("Update block: \(show(update))  [\(updateSource)]")
+        lines.append("Update block: \(updateNotApplicable ? "not applicable" : show(update))  [\(updateSource)]")
+        let updateDone = update == .patched || updateNotApplicable
 
         // 7. verdict — one decision, rendered twice (text + Status.overall)
         var verdict: [String] = []
@@ -204,14 +211,16 @@ struct Doctor {
         } else if unknowns {
             overall = .mixed
             verdict.append("⚠️ Some patch points hold bytes that are neither pristine nor patched — mixed builds or a foreign patch. Reinstall WeChat, then patch.")
-        } else if revokeOn != nil && update == .patched {
+        } else if revokeOn != nil && updateDone {
             overall = .protected
-            verdict.append("✅ Anti-revoke (\(revokeOn!)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
+            verdict.append(updateNotApplicable
+                ? "✅ Anti-revoke (\(revokeOn!)) is applied. \(Command.appStoreUpdateNote) The only real test of anti-revoke is receiving a recalled message."
+                : "✅ Anti-revoke (\(revokeOn!)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
         } else {
             overall = (revokeOn == nil && update != .patched) ? .unprotected : .partial
             var todo: [String] = []
             if revokeOn == nil { todo.append("anti-revoke") }
-            if update != .patched { todo.append("update block") }
+            if !updateDone { todo.append("update block") }
             nextCommand = "\(sudo)wechattweak patch --variant keeptip"
             verdict.append("➡️ Missing: \(todo.joined(separator: " + ")). \(running ? "Quit WeChat (wait until `pgrep -x WeChat` prints nothing), then run:" : "Run:")  \(nextCommand!)")
         }
@@ -230,7 +239,7 @@ struct Doctor {
             entitlementKeyCount: mainEnts?.count ?? 0,
             antiRevokeSilent: silent?.rawValue,
             antiRevokeKeeptip: keeptip?.rawValue,
-            updateBlock: update?.rawValue,
+            updateBlock: updateNotApplicable ? "notApplicable" : update?.rawValue,
             updateSource: updateSource,
             sparkle: sparkle,
             verdict: verdict,

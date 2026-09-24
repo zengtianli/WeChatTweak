@@ -59,6 +59,20 @@ struct Command {
         identifier == updateIdentifier || legacyUpdateIdentifiers.contains(identifier)
     }
     static let dylibBinary = "Contents/Resources/wechat.dylib"
+    /// Mac App Store installs carry a receipt; their updates come from the App Store, and the
+    /// App Store build of 269602 ships without WeChat's own updater class (issues #1, #3).
+    static func isAppStoreInstall(app: URL) -> Bool {
+        FileManager.default.fileExists(atPath: app.appendingPathComponent("Contents/_MASReceipt/receipt").path)
+    }
+    /// The in-app updater is absent *because* this is an App Store install — nothing to block.
+    /// Only the exact "class not found" case qualifies: anything else (ambiguous class, changed
+    /// code) still fails loudly, and a direct-download build without the class still fails too,
+    /// since that is how the patch used to get silently reverted.
+    static func updaterAbsentOnAppStore(app: URL, error: Swift.Error) -> Bool {
+        guard isAppStoreInstall(app: app), case UpdateLocator.Error.classNotFound = error else { return false }
+        return true
+    }
+    static let appStoreUpdateNote = "App Store install: this build has no in-app updater (the App Store updates it), so there is nothing to block. Turn off App Store automatic updates to keep the patch."
     /// A 4.x config entry patches wechat.dylib; 3.8.x entries patch the main executable.
     static func isWeChat4(_ config: Config) -> Bool {
         config.targets.contains { $0.binary == dylibBinary }
@@ -114,6 +128,9 @@ struct Command {
             if Command.isWeChat4(config) {
                 do {
                     targets.append(try autoLocatedUpdateTarget(app: app))
+                } catch where Command.updaterAbsentOnAppStore(app: app, error: error) {
+                    print("------ Update block ------")
+                    print("\(Command.appStoreUpdateNote) Continuing.")
                 } catch {
                     throw Error.updateUnavailable(version: config.version, reason: error.localizedDescription)
                 }
