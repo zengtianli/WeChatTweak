@@ -11,7 +11,8 @@ struct Command {
     enum Error: @unchecked Sendable, LocalizedError {
         case executing(command: String, error: NSDictionary)
         case keeptipUnavailable(version: String)
-        case updateUnavailable(version: String, reason: String)
+        case revokeUnavailable(version: String)
+        case nothingApplied([String])
         case restoreUnavailable(version: String, targets: [String])
 
         var errorDescription: String? {
@@ -33,13 +34,10 @@ struct Command {
                     would corrupt the binary. Those entries predate the `expected` field (WeChat 3.8.x only).
                     Reinstall WeChat from https://mac.weixin.qq.com to get a pristine bundle.
                     """
-            case let .updateUnavailable(version, reason):
-                return """
-                    Cannot block WeChat's auto-updater for build \(version): \(reason)
-                    Without the block, WeChat's next update silently reverts the patch (it has, four times).
-                    Either curate the patch point:  python3 tools/locate_update.py --append && swift build -c release
-                    or, knowingly, keep updates on:  wechattweak patch --no-block-update
-                    """
+            case let .revokeUnavailable(version):
+                return "config.json has no anti-revoke patch point for WeChat build \(version)."
+            case let .nothingApplied(lines):
+                return "Nothing was patched:\n" + lines.map { "  " + $0 }.joined(separator: "\n")
             }
         }
     }
@@ -72,6 +70,9 @@ struct Command {
         guard isAppStoreInstall(app: app), case UpdateLocator.Error.classNotFound = error else { return false }
         return true
     }
+    static func updateUnavailableNote(_ reason: String) -> String {
+        "this build's updater could not be located (\(reason)); anti-revoke works without it, but a WeChat update will remove the patch — run patch again afterwards"
+    }
     static let appStoreUpdateNote = "App Store install: this build has no in-app updater (the App Store updates it), so there is nothing to block. Turn off App Store automatic updates to keep the patch."
     /// A 4.x config entry patches wechat.dylib; 3.8.x entries patch the main executable.
     static func isWeChat4(_ config: Config) -> Bool {
@@ -103,80 +104,117 @@ struct Command {
         return p.terminationStatus == 0
     }
 
+    /// What one `patch` run did, feature by feature. Anti-revoke and the update block are
+    /// independent: one that cannot be applied is reported and skipped, never a reason to
+    /// leave the other undone.
+    struct PatchOutcome {
+        enum Feature: String, CaseIterable {
+            case antiRevoke = "Anti-revoke"
+            case updateBlock = "Update block"
+        }
+        var applied: [Feature: String] = [:]
+        var skipped: [Feature: String] = [:]
+        /// Bundle-relative binaries that were written, so `resign` can sign them first.
+        var touched: [String] = []
+
+        var summary: [String] {
+            Feature.allCases.compactMap { f in
+                if let detail = applied[f] { return "\(f.rawValue): applied (\(detail))" }
+                if let why = skipped[f] { return "\(f.rawValue): NOT applied — \(why)" }
+                return nil
+            }
+        }
+    }
+
     /// Patches every target into its own binary (default `Contents/MacOS/WeChat`;
     /// WeChat 4.x targets `Contents/Resources/wechat.dylib`). Returns the unique
     /// bundle-relative paths that were touched, so `resign` can sign them first.
+    /// Throws only when nothing at all could be applied.
     @discardableResult
     static func patch(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true) throws -> [String] {
-        // keeptip needs a `revoke-keeptip` target. If this build has none, either derive
-        // it from the code signature (--auto-locate) or fail loudly — never silently
-        // skip the revoke target and report success without touching a byte.
-        var targets = config.targets
-        let hasKeeptip = targets.contains { $0.identifier == Command.keeptipRevokeIdentifier }
-        if variant == .keeptip && !hasKeeptip {
-            guard autoLocate else { throw Error.keeptipUnavailable(version: config.version) }
-            targets.append(try autoLocatedKeeptipTarget(app: app, config: config))
+        try patchFeatures(app: app, config: config, variant: variant, autoLocate: autoLocate, blockUpdate: blockUpdate).touched
+    }
+
+    static func patchFeatures(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true) throws -> PatchOutcome {
+        var outcome = PatchOutcome()
+
+        // ── Anti-revoke (plus build extras such as multiInstance) ──
+        // The two revoke targets are mutually exclusive: pick the one matching the variant.
+        var revokeTargets = config.targets.filter { t in
+            guard !Command.isUpdateTarget(t.identifier) else { return false }
+            switch t.identifier {
+            case Command.silentRevokeIdentifier: return variant == .silent
+            case Command.keeptipRevokeIdentifier: return variant == .keeptip
+            default: return true
+            }
+        }
+        let wantedRevoke = variant == .keeptip ? Command.keeptipRevokeIdentifier : Command.silentRevokeIdentifier
+        if !revokeTargets.contains(where: { $0.identifier == wantedRevoke }) {
+            // keeptip needs a `revoke-keeptip` target: derive it (--auto-locate) or report it —
+            // never claim anti-revoke without touching a byte.
+            do {
+                guard variant == .keeptip else { throw Error.revokeUnavailable(version: config.version) }
+                guard autoLocate else { throw Error.keeptipUnavailable(version: config.version) }
+                revokeTargets.append(try autoLocatedKeeptipTarget(app: app, config: config))
+            } catch {
+                outcome.skipped[.antiRevoke] = error.localizedDescription
+                revokeTargets.removeAll { $0.identifier == Command.silentRevokeIdentifier || $0.identifier == Command.keeptipRevokeIdentifier }
+            }
         }
 
-        // Block auto-update (default). A 4.x build not yet curated with an `update` target is
-        // located live by walking the ObjC metadata — that lookup is by name and is followed by an
-        // instruction-shape check plus Patcher's expected-byte gate, so it needs no opt-in flag.
-        // Failing to find it is an error, not a silent skip: an unblocked updater is precisely
-        // how every previous "the patch stopped working" report happened.
-        let hasUpdate = targets.contains { Command.isUpdateTarget($0.identifier) }
-        if blockUpdate && !hasUpdate {
-            if Command.isWeChat4(config) {
-                do {
-                    targets.append(try autoLocatedUpdateTarget(app: app))
-                } catch where Command.updaterAbsentOnAppStore(app: app, error: error) {
-                    print("------ Update block ------")
-                    print("\(Command.appStoreUpdateNote) Continuing.")
-                } catch {
-                    throw Error.updateUnavailable(version: config.version, reason: error.localizedDescription)
+        // ── Update block ──
+        // A 4.x build not yet curated with an `update` target is located live by walking the ObjC
+        // metadata (by name, then instruction-shape and expected-byte checks).
+        var updateTargets: [Config.Target] = []
+        if !blockUpdate {
+            outcome.skipped[.updateBlock] = "turned off with --no-block-update; a WeChat update will remove the patch"
+        } else if case let curated = config.targets.filter({ Command.isUpdateTarget($0.identifier) }), !curated.isEmpty {
+            updateTargets = curated
+        } else if Command.isWeChat4(config) {
+            do {
+                updateTargets = [try autoLocatedUpdateTarget(app: app)]
+            } catch where Command.updaterAbsentOnAppStore(app: app, error: error) {
+                outcome.skipped[.updateBlock] = Command.appStoreUpdateNote
+            } catch {
+                outcome.skipped[.updateBlock] = Command.updateUnavailableNote(error.localizedDescription)
+            }
+        } else {
+            outcome.skipped[.updateBlock] = "config.json has no updater patch points for this 3.x build"
+        }
+
+        // Each feature is written on its own, so a failure in one leaves the other intact.
+        // Within a feature, entries are coalesced by image (269602's revoke and multi-instance
+        // share wechat.dylib and are validated together before either is written).
+        func apply(_ feature: PatchOutcome.Feature, _ targets: [Config.Target], detail: String) {
+            guard !targets.isEmpty else { return }
+            var entriesByBinary: [String: [Config.Entry]] = [:]
+            var order: [String] = []
+            for target in targets {
+                let relative = target.binary ?? Command.defaultBinary
+                print("------ Target: \(target.identifier) (\(relative)) ------")
+                if entriesByBinary[relative] == nil { order.append(relative) }
+                entriesByBinary[relative, default: []].append(contentsOf: target.entries)
+            }
+            do {
+                for relative in order {
+                    try Patcher.patch(binary: app.appendingPathComponent(relative),
+                                      entries: entriesByBinary[relative]!,
+                                      backupVersion: config.version)
+                    if !outcome.touched.contains(relative) { outcome.touched.append(relative) }
                 }
-            } else {
-                print("------ Update block ------")
-                print("config.json has no updater targets for this 3.x build — nothing to block; continuing.")
+                outcome.applied[feature] = detail
+            } catch {
+                outcome.skipped[feature] = error.localizedDescription
             }
         }
+        apply(.antiRevoke, revokeTargets,
+              detail: revokeTargets.map(\.identifier).joined(separator: ", "))
+        apply(.updateBlock, updateTargets, detail: "\(updateTargets.flatMap(\.entries).count) patch points")
 
-        // Coalesce entries by image. In particular, 269602's revoke and
-        // multi-instance changes share wechat.dylib, so Patcher can validate
-        // both before writing either one.
-        var entriesByBinary: [String: [Config.Entry]] = [:]
-        var binaryOrder: [String] = []
-        for target in targets {
-            if !blockUpdate && Command.isUpdateTarget(target.identifier) {
-                print("------ Target: \(target.identifier) skipped (--no-block-update) ------")
-                continue
-            }
-            // The two revoke targets are mutually exclusive: pick the one matching the variant,
-            // skip the other. Everything else (updaters, multi-instance) is applied unconditionally.
-            switch target.identifier {
-            case Command.silentRevokeIdentifier where variant == .keeptip:
-                continue
-            case Command.keeptipRevokeIdentifier where variant == .silent:
-                continue
-            default:
-                break
-            }
-
-            let relative = target.binary ?? Command.defaultBinary
-            print("------ Target: \(target.identifier) (\(relative)) ------")
-            if entriesByBinary[relative] == nil {
-                binaryOrder.append(relative)
-            }
-            entriesByBinary[relative, default: []].append(contentsOf: target.entries)
-        }
-
-        var patched: [String] = []
-        for relative in binaryOrder {
-            try Patcher.patch(binary: app.appendingPathComponent(relative),
-                              entries: entriesByBinary[relative]!,
-                              backupVersion: config.version)
-            patched.append(relative)
-        }
-        return patched
+        print("------ Summary ------")
+        outcome.summary.forEach { print($0) }
+        guard !outcome.applied.isEmpty else { throw Error.nothingApplied(outcome.summary) }
+        return outcome
     }
 
     /// Undo everything `patch` writes: put every patch point back to its pristine bytes.

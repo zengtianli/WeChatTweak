@@ -56,7 +56,7 @@ extension Tweak {
 
         @Flag(
             inversion: .prefixedNo,
-            help: "Also neutralise WeChat's own auto-updater (XAppUpdateManager) so the next WeChat update cannot silently replace the patched bundle. On by default; --no-block-update keeps updates working (and the patch dies at the next update)."
+            help: "Also neutralise WeChat's own auto-updater (XAppUpdateManager) so the next WeChat update cannot silently replace the patched bundle. On by default and independent of anti-revoke: if this build's updater cannot be blocked, anti-revoke is still applied and the summary says why. --no-block-update keeps updates working (and the patch dies at the next update)."
         )
         var blockUpdate: Bool = true
 
@@ -80,7 +80,10 @@ extension Tweak {
             print("------ Patch ------")
             print("Variant: \(variant.rawValue)")
             print("Block auto-update: \(blockUpdate ? "yes" : "no (--no-block-update)")")
-            let patched = try Command.patch(
+            // Anti-revoke and the update block are applied independently; a feature that
+            // cannot be applied is listed in the summary, and the exit code stays 0 as long as
+            // something was applied (`doctor` reports the exact state afterwards).
+            let outcome = try Command.patchFeatures(
                 app: options.app,
                 config: config,
                 variant: variant,
@@ -92,7 +95,7 @@ extension Tweak {
             print("------ Resign ------")
             try await Command.resign(
                 app: options.app,
-                patchedBinaries: patched
+                patchedBinaries: outcome.touched
             )
             print("Done!")
 

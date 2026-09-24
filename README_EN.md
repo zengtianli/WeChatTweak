@@ -45,7 +45,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 | --- | --- | :---: | :---: |
 | **Anti-recall (silent variant)** | Recalled messages remain unchanged in the chat, with no notice | ✓ | ✓ (current release) |
 | **Anti-recall (keep-notice variant)** | Keeps the message **and** the “The other party recalled a message” notice | ✓ | ⚠️ (`--variant keeptip`: notices in **private chats**; **group chats** remain silent) |
-| **Block automatic updates** | Stops updates from reverting patches (WeChat replaces the entire bundle; it has silently erased patches four times, and `defaults write` cannot disable it) | ✓ | ✓ (included in `patch` by default; disable with `--no-block-update`) |
+| **Block automatic updates** | Stops updates from reverting patches (WeChat replaces the entire bundle; it has silently erased patches four times, and `defaults write` cannot disable it) | ✓ | ✓ (included in `patch` by default and independent of anti-recall: if it cannot be applied, anti-recall still is and the reason is shown; disable with `--no-block-update`) |
 | **Multiple client instances** | Sign into multiple accounts at once | ✓ | — (no byte patch for 4.x; duplicate the App) |
 
 > **WeChat 4.x has two anti-recall variants; select one with `--variant` when patching**:
@@ -122,6 +122,8 @@ pkill -x WeChat
 # 5. 打补丁。先不加 sudo：微信 4.1.13 起由 Sparkle 以当前用户身份更新，/Applications/WeChat.app 归你所有；
 #    报 permission denied（老版本或用 root 装的包）再前面加 sudo。
 #    默认同时打「阻止自动更新」（不打的话微信下次更新会把补丁连包换掉）；确要保留更新加 --no-block-update
+#    Anti-recall and the update block are applied independently; the closing Summary lists each
+#    result and reason. Exit code 0 when either was applied, an error only when neither could be
 .build/release/wechattweak patch                    # 默认 = 静默变体（留消息、无提示）
 # 或：留消息 + 仍显示撤回提示
 .build/release/wechattweak patch --variant keeptip

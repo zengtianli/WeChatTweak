@@ -37,6 +37,9 @@ struct Doctor {
             case unsupportedBuild
             /// Anti-revoke and the update block are both applied.
             case protected
+            /// Anti-revoke is applied; this build's updater cannot be blocked (App Store install,
+            /// or not located). Nothing more to do now — the reason is in `updateSource`.
+            case antiRevokeOnly
             /// One of the two is applied, the other is not.
             case partial
             /// Nothing applied, and nothing is in the way.
@@ -58,7 +61,8 @@ struct Doctor {
         /// `patched` / `pristine` / `unknown` / nil when the build has no such target.
         var antiRevokeSilent: String?
         var antiRevokeKeeptip: String?
-        /// Also `notApplicable`: App Store install without an in-app updater (nothing to block).
+        /// Also `notApplicable` (App Store install / 3.x build without updater patch points) and
+        /// `unavailable` (the updater could not be located); the reason is in `updateSource`.
         var updateBlock: String?
         var updateSource: String
         var sparkle: [String: String]
@@ -147,6 +151,7 @@ struct Doctor {
         var silent: Patcher.State?, keeptip: Patcher.State?, update: Patcher.State?
         var updateSource = "config.json"
         var updateNotApplicable = false
+        var updateUnavailable = false
         if let config {
             func state(of identifier: String) -> Patcher.State? {
                 guard let t = config.targets.first(where: { $0.identifier == identifier }) else { return nil }
@@ -173,13 +178,26 @@ struct Doctor {
                 } catch where Command.updaterAbsentOnAppStore(app: app, error: error) {
                     updateNotApplicable = true
                     updateSource = Command.appStoreUpdateNote
-                } catch {}
+                } catch {
+                    updateUnavailable = true
+                    updateSource = Command.updateUnavailableNote(error.localizedDescription)
+                }
+            } else if update == nil, !Command.isWeChat4(config) {
+                let legacy = config.targets.filter { Command.legacyUpdateIdentifiers.contains($0.identifier) }
+                if legacy.isEmpty {
+                    updateNotApplicable = true
+                    updateSource = "config.json has no updater patch points for this 3.x build"
+                } else {
+                    let states = Set(legacy.map { state(of: $0.identifier) })
+                    update = states.count == 1 ? states.first! : .unknown
+                }
             }
         }
         func show(_ s: Patcher.State?) -> String { s.map(\.rawValue) ?? "n/a" }
         lines.append("Anti-revoke:  silent=\(show(silent)) keeptip=\(show(keeptip))")
-        lines.append("Update block: \(updateNotApplicable ? "not applicable" : show(update))  [\(updateSource)]")
-        let updateDone = update == .patched || updateNotApplicable
+        let updateLabel = updateNotApplicable ? "not applicable" : (updateUnavailable ? "unavailable" : show(update))
+        lines.append("Update block: \(updateLabel)  [\(updateSource)]")
+        let updateImpossible = updateNotApplicable || updateUnavailable
 
         // 7. verdict — one decision, rendered twice (text + Status.overall)
         var verdict: [String] = []
@@ -211,16 +229,18 @@ struct Doctor {
         } else if unknowns {
             overall = .mixed
             verdict.append("⚠️ Some patch points hold bytes that are neither pristine nor patched — mixed builds or a foreign patch. Reinstall WeChat, then patch.")
-        } else if revokeOn != nil && updateDone {
+        } else if revokeOn != nil && update == .patched {
             overall = .protected
-            verdict.append(updateNotApplicable
-                ? "✅ Anti-revoke (\(revokeOn!)) is applied. \(Command.appStoreUpdateNote) The only real test of anti-revoke is receiving a recalled message."
-                : "✅ Anti-revoke (\(revokeOn!)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
+            verdict.append("✅ Anti-revoke (\(revokeOn!)) and update block are both applied. The only real test of anti-revoke is receiving a recalled message.")
+        } else if revokeOn != nil && updateImpossible {
+            overall = .antiRevokeOnly
+            verdict.append("✅ Anti-revoke (\(revokeOn!)) is applied. Update block: \(updateSource). The only real test of anti-revoke is receiving a recalled message.")
         } else {
             overall = (revokeOn == nil && update != .patched) ? .unprotected : .partial
             var todo: [String] = []
             if revokeOn == nil { todo.append("anti-revoke") }
-            if !updateDone { todo.append("update block") }
+            if update != .patched && !updateImpossible { todo.append("update block") }
+            if updateImpossible { verdict.append("ℹ️ Update block: \(updateSource).") }
             nextCommand = "\(sudo)wechattweak patch --variant keeptip"
             verdict.append("➡️ Missing: \(todo.joined(separator: " + ")). \(running ? "Quit WeChat (wait until `pgrep -x WeChat` prints nothing), then run:" : "Run:")  \(nextCommand!)")
         }
@@ -239,7 +259,7 @@ struct Doctor {
             entitlementKeyCount: mainEnts?.count ?? 0,
             antiRevokeSilent: silent?.rawValue,
             antiRevokeKeeptip: keeptip?.rawValue,
-            updateBlock: updateNotApplicable ? "notApplicable" : update?.rawValue,
+            updateBlock: updateNotApplicable ? "notApplicable" : (updateUnavailable ? "unavailable" : update?.rawValue),
             updateSource: updateSource,
             sparkle: sparkle,
             verdict: verdict,
