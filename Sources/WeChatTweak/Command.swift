@@ -79,6 +79,42 @@ struct Command {
         config.targets.contains { $0.binary == dylibBinary }
     }
 
+    /// The code WeChat actually executes on this Mac. A universal wechat.dylib carries both
+    /// slices, and config.json may know only one of them — patching the arm64 slice on an
+    /// Intel Mac changes nothing the user will ever run (WeChatTweak issue #7).
+    /// `WECHATTWEAK_HOST_ARCH=x86_64|arm64` overrides the probe: for WeChat forced to run
+    /// under Rosetta, and for exercising the Intel path on Apple silicon.
+    static var hostArch: Config.Arch {
+        if let forced = ProcessInfo.processInfo.environment["WECHATTWEAK_HOST_ARCH"],
+           let arch = Config.Arch(rawValue: forced) {
+            return arch
+        }
+        var value: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        // Reports the hardware even when this process is translated by Rosetta.
+        if sysctlbyname("hw.optional.arm64", &value, &size, nil, 0) == 0, value == 1 { return .arm64 }
+        return .x86_64
+    }
+    static func supports(_ arch: Config.Arch, _ targets: [Config.Target]) -> Bool {
+        targets.contains { $0.entries.contains { $0.arch == arch } }
+    }
+    static func archUnsupportedNote(build: String, arch: Config.Arch, feature: String) -> String {
+        "no \(arch.rawValue) patch points for \(feature) in build \(build) — this Mac runs WeChat's \(arch.rawValue) code, and the patch points on record are for the other architecture, so writing them would change nothing here"
+    }
+
+    /// Version strings as WeChat's own Info.plist states them. `CFBundleVersion` (the build
+    /// number config.json is keyed by) says nothing a user recognises; `WeChatBundleVersion`
+    /// is the four-part version shown in WeChat's About window (4.x only).
+    static func bundleVersions(app: URL) -> (full: String?, short: String?) {
+        let info = NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))
+        return (info?["WeChatBundleVersion"] as? String, info?["CFBundleShortVersionString"] as? String)
+    }
+    /// `appStore` when the bundle carries a Mac App Store receipt, otherwise `direct`
+    /// (the download from mac.weixin.qq.com, Homebrew included).
+    static func installChannel(app: URL) -> String {
+        isAppStoreInstall(app: app) ? "appStore" : "direct"
+    }
+
     static func version(app: URL) async throws -> String? {
         try await Command.execute(command: "defaults read \(q(app.appendingPathComponent("Contents/Info.plist").path)) CFBundleVersion")
     }
@@ -116,13 +152,16 @@ struct Command {
         var skipped: [Feature: String] = [:]
         /// Bundle-relative binaries that were written, so `resign` can sign them first.
         var touched: [String] = []
+        /// Why macOS refused a write, when one was refused (see `WriteAccess`). One diagnosis
+        /// per run: both features write the same bundle.
+        var writeBlocked: [String] = []
 
         var summary: [String] {
             Feature.allCases.compactMap { f in
                 if let detail = applied[f] { return "\(f.rawValue): applied (\(detail))" }
                 if let why = skipped[f] { return "\(f.rawValue): NOT applied — \(why)" }
                 return nil
-            }
+            } + writeBlocked
         }
     }
 
@@ -131,11 +170,11 @@ struct Command {
     /// bundle-relative paths that were touched, so `resign` can sign them first.
     /// Throws only when nothing at all could be applied.
     @discardableResult
-    static func patch(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true) throws -> [String] {
-        try patchFeatures(app: app, config: config, variant: variant, autoLocate: autoLocate, blockUpdate: blockUpdate).touched
+    static func patch(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true, hostArch: Config.Arch = Command.hostArch) throws -> [String] {
+        try patchFeatures(app: app, config: config, variant: variant, autoLocate: autoLocate, blockUpdate: blockUpdate, hostArch: hostArch).touched
     }
 
-    static func patchFeatures(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true) throws -> PatchOutcome {
+    static func patchFeatures(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true, hostArch: Config.Arch = Command.hostArch) throws -> PatchOutcome {
         var outcome = PatchOutcome()
 
         // ── Anti-revoke (plus build extras such as multiInstance) ──
@@ -187,6 +226,12 @@ struct Command {
         // share wechat.dylib and are validated together before either is written).
         func apply(_ feature: PatchOutcome.Feature, _ targets: [Config.Target], detail: String) {
             guard !targets.isEmpty else { return }
+            // Never report a feature as applied when only the other architecture's slice
+            // would be written: on this Mac WeChat would run exactly as before.
+            guard Command.supports(hostArch, targets) else {
+                outcome.skipped[feature] = Command.archUnsupportedNote(build: config.version, arch: hostArch, feature: feature.rawValue.lowercased())
+                return
+            }
             var entriesByBinary: [String: [Config.Entry]] = [:]
             var order: [String] = []
             for target in targets {
@@ -205,6 +250,9 @@ struct Command {
                 outcome.applied[feature] = detail
             } catch {
                 outcome.skipped[feature] = error.localizedDescription
+                if outcome.writeBlocked.isEmpty {
+                    outcome.writeBlocked = WriteAccess.summaryLines(error, app: app)
+                }
             }
         }
         apply(.antiRevoke, revokeTargets,

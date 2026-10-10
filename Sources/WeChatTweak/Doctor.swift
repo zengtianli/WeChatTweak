@@ -48,6 +48,16 @@ struct Doctor {
 
         var overall: Overall
         var build: String?
+        /// `WeChatBundleVersion`, e.g. "4.1.15.54" — the version WeChat's About window shows. nil on 3.x.
+        var fullVersion: String?
+        /// `CFBundleShortVersionString`, e.g. "4.1.15".
+        var shortVersion: String?
+        /// `appStore` (bundle has a Mac App Store receipt) or `direct`.
+        var installChannel: String
+        /// The architecture WeChat runs as on this Mac; patch state below is judged on that slice.
+        var hostArch: String
+        /// false → config.json knows this build, but has no anti-revoke patch points for `hostArch`.
+        var archSupported: Bool
         var appPath: String
         var configKnown: Bool
         var configTargets: [String]
@@ -55,6 +65,11 @@ struct Doctor {
         var running: Bool
         /// false → the patch must run with sudo.
         var writable: Bool
+        /// What the filesystem itself puts in the way of a write (`WriteAccess.Blocker` raw values:
+        /// needsAdmin / immutable / aclDeny / readOnlyVolume). Empty when nothing does. App Management
+        /// (TCC) cannot be read without attempting a write, so it only ever appears in `patch` output.
+        var writeBlockers: [String]
+        var writeAccess: [WriteAccess.Item]
         var signature: String
         var entitlementsOK: Bool
         var entitlementKeyCount: Int
@@ -93,14 +108,17 @@ struct Doctor {
         }
     }
 
-    static func run(app: URL, configs: [Config]) async throws -> Report {
+    static func run(app: URL, configs: [Config], hostArch: Config.Arch = Command.hostArch) async throws -> Report {
         let fm = FileManager.default
         var lines: [String] = []
 
         // 1. build + config
         let version = try await Command.version(app: app)
         let config = configs.first { $0.version == version }
+        let versions = Command.bundleVersions(app: app)
+        let channel = Command.installChannel(app: app)
         lines.append("WeChat build: \(version ?? "unknown")  (\(app.path))")
+        lines.append("Version:      \(versions.full ?? versions.short ?? "unknown")  channel=\(channel)  arch=\(hostArch.rawValue)")
         lines.append("config.json:  \(config == nil ? "NO entry for this build" : "matched (\(config!.targets.map(\.identifier).joined(separator: ", ")))")")
 
         // 2. SIP
@@ -113,6 +131,12 @@ struct Doctor {
         let dylib = app.appendingPathComponent(Command.dylibBinary)
         let writable = fm.isWritableFile(atPath: app.path) && (!fm.fileExists(atPath: dylib.path) || fm.isWritableFile(atPath: dylib.path))
         lines.append("Writable:     \(writable ? "yes — no sudo needed" : "no — run patch with sudo")")
+        let access = WriteAccess.inspect(app: app)
+        let accessAdvice = WriteAccess.advice(access, app: app)
+        if !access.blockers.isEmpty {
+            lines.append("Write access: \(access.codes)")
+            accessAdvice.forEach { lines.append("              " + $0) }
+        }
 
         // 4. signature + entitlements
         let sig = capture("/usr/bin/codesign", ["-dvv", app.path])
@@ -152,11 +176,17 @@ struct Doctor {
         var updateSource = "config.json"
         var updateNotApplicable = false
         var updateUnavailable = false
+        // Targets that exist for this build but carry no entry for the slice this Mac runs.
+        var archMissing: Set<String> = []
         if let config {
             func state(of identifier: String) -> Patcher.State? {
                 guard let t = config.targets.first(where: { $0.identifier == identifier }) else { return nil }
+                // Judge the slice this Mac executes. The other slice being patched (or not)
+                // says nothing about whether recalls are blocked here.
+                let entries = t.entries.filter { $0.arch == hostArch }
+                guard !entries.isEmpty else { archMissing.insert(identifier); return nil }
                 let binary = app.appendingPathComponent(t.binary ?? Command.defaultBinary)
-                guard let insp = try? Patcher.inspect(binary: binary, entries: t.entries) else { return .unknown }
+                guard let insp = try? Patcher.inspect(binary: binary, entries: entries) else { return .unknown }
                 if insp.allSatisfy({ $0.state == .patched }) { return .patched }
                 // A "restore" entry (keeptip's cbz: asm is itself one of the accepted originals) reads
                 // as .patched on a pristine binary; that is still the pristine picture for the target.
@@ -168,7 +198,11 @@ struct Doctor {
             silent = state(of: Command.silentRevokeIdentifier)
             keeptip = state(of: Command.keeptipRevokeIdentifier)
             update = state(of: Command.updateIdentifier)
-            if update == nil, Command.isWeChat4(config), fm.fileExists(atPath: dylib.path) {
+            if archMissing.contains(Command.updateIdentifier) || (update == nil && Command.isWeChat4(config) && hostArch != .arm64) {
+                // The live locator below reads arm64 code only.
+                updateUnavailable = true
+                updateSource = Command.updateUnavailableNote(Command.archUnsupportedNote(build: config.version, arch: hostArch, feature: "update block"))
+            } else if update == nil, Command.isWeChat4(config), fm.fileExists(atPath: dylib.path) {
                 // Not curated for this build yet — the locator can still tell us the live state.
                 do {
                     let hits = try UpdateLocator.locate(binary: dylib)
@@ -198,6 +232,13 @@ struct Doctor {
         let updateLabel = updateNotApplicable ? "not applicable" : (updateUnavailable ? "unavailable" : show(update))
         lines.append("Update block: \(updateLabel)  [\(updateSource)]")
         let updateImpossible = updateNotApplicable || updateUnavailable
+        // Anti-revoke is the product: if neither revoke variant has patch points for this
+        // Mac's architecture, the build is unsupported *here*, whatever the other slice has.
+        let revokeArchMissing = config != nil && silent == nil && keeptip == nil
+            && !archMissing.isDisjoint(with: [Command.silentRevokeIdentifier, Command.keeptipRevokeIdentifier])
+        if revokeArchMissing {
+            lines.append("Architecture: \(hostArch.rawValue) — no anti-revoke patch points for this architecture in build \(version ?? "?")")
+        }
 
         // 7. verdict — one decision, rendered twice (text + Status.overall)
         var verdict: [String] = []
@@ -226,6 +267,9 @@ struct Doctor {
         } else if config == nil {
             overall = .unsupportedBuild
             verdict.append("❌ Build \(version ?? "?") is not in config.json. From the repo: python3 tools/sync_ref.py && python3 tools/locate_revoke.py --append && python3 tools/locate_update.py --append && swift build -c release")
+        } else if revokeArchMissing {
+            overall = .unsupportedBuild
+            verdict.append("❌ Build \(version ?? "?") is supported on the other architecture only: config.json has no \(hostArch.rawValue) anti-revoke patch points for it, and this Mac runs WeChat's \(hostArch.rawValue) code. Patching would leave WeChat behaving exactly as it does now, so nothing is offered.")
         } else if unknowns {
             overall = .mixed
             verdict.append("⚠️ Some patch points hold bytes that are neither pristine nor patched — mixed builds or a foreign patch. Reinstall WeChat, then patch.")
@@ -242,18 +286,32 @@ struct Doctor {
             if update != .patched && !updateImpossible { todo.append("update block") }
             if updateImpossible { verdict.append("ℹ️ Update block: \(updateSource).") }
             nextCommand = "\(sudo)wechattweak patch --variant keeptip"
+            // A lock, a deny ACL or a read-only volume stops the patch even under sudo: say so
+            // before the command, with the fix, instead of letting the run fail on it.
+            let hardBlockers = access.blockers.filter { $0 != .needsAdmin }
+            if !hardBlockers.isEmpty {
+                verdict.append("🔒 Fix this first, the patch cannot write otherwise:")
+                zip(access.blockers, accessAdvice).filter { $0.0 != .needsAdmin }.forEach { verdict.append("   " + $0.1) }
+            }
             verdict.append("➡️ Missing: \(todo.joined(separator: " + ")). \(running ? "Quit WeChat (wait until `pgrep -x WeChat` prints nothing), then run:" : "Run:")  \(nextCommand!)")
         }
 
         let status = Status(
             overall: overall,
             build: version,
+            fullVersion: versions.full,
+            shortVersion: versions.short,
+            installChannel: channel,
+            hostArch: hostArch.rawValue,
+            archSupported: !revokeArchMissing,
             appPath: app.path,
             configKnown: config != nil,
             configTargets: config?.targets.map(\.identifier) ?? [],
             sip: sip,
             running: running,
             writable: writable,
+            writeBlockers: access.blockers.map(\.rawValue),
+            writeAccess: access.items,
             signature: signature,
             entitlementsOK: !stripped,
             entitlementKeyCount: mainEnts?.count ?? 0,

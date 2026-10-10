@@ -93,10 +93,15 @@ extension Tweak {
             print("Done!")
 
             print("------ Resign ------")
-            try await Command.resign(
-                app: options.app,
-                patchedBinaries: outcome.touched
-            )
+            do {
+                try await Command.resign(
+                    app: options.app,
+                    patchedBinaries: outcome.touched
+                )
+            } catch {
+                WriteAccess.summaryLines(error, app: options.app).forEach { print($0) }
+                throw error
+            }
             print("Done!")
 
             Darwin.exit(EXIT_SUCCESS)
@@ -129,11 +134,16 @@ extension Tweak {
             }
             print("Matched config: build \(config.version), targets: \(config.targets.map(\.identifier).joined(separator: ", "))")
 
-            let restored = try Command.restore(app: options.app, config: config)
-            print("Done!")
+            do {
+                let restored = try Command.restore(app: options.app, config: config)
+                print("Done!")
 
-            print("------ Resign ------")
-            try await Command.resign(app: options.app, patchedBinaries: restored)
+                print("------ Resign ------")
+                try await Command.resign(app: options.app, patchedBinaries: restored)
+            } catch {
+                WriteAccess.summaryLines(error, app: options.app).forEach { print($0) }
+                throw error
+            }
             print("Done!")
             print("WeChat is back to stock. Its auto-updater is live again, so the next update will land normally.")
 
