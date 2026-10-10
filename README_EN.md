@@ -13,7 +13,7 @@ A command-line tool for modifying the WeChat client on macOS.
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `270134` (4.x patches: arm64).
+> Anti-recall + auto-updater block for selected WeChat builds through `270134` (4.x patches: arm64; Intel for 270134 / 270102).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -66,8 +66,8 @@ The sample for build 270100 is the installer downloaded on 2026-09-24 from the [
 
 | Build | WeChat version | Anti-recall | Block automatic updates |
 | --- | --- | :---: | :---: |
-| 270134 | 4.1.15.54 website edition, arm64 | ✓ (keeptip and silent writing, diagnostics, strict signature verification, and restoration verified on a copy of the official installer on a Mac with SIP enabled; after restoring, all 11 patch points match the original byte for byte; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
-| 270102 | 4.1.15.22 website edition, arm64 | ✓ (same procedure passed on a copy of the 4.1.15.22 installer; the patch points agree across fzlzjerry/wechat-antirecall and this repository's locators) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
+| 270134 | 4.1.15.54 website edition, arm64 + Intel (see below) | ✓ (keeptip and silent writing, diagnostics, strict signature verification, and restoration verified on a copy of the official installer on a Mac with SIP enabled; after restoring, all 11 patch points match the original byte for byte; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
+| 270102 | 4.1.15.22 website edition, arm64 + Intel (see below) | ✓ (same procedure passed on a copy of the 4.1.15.22 installer; the patch points agree across fzlzjerry/wechat-antirecall and this repository's locators) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 270100 | 4.1.15 website edition, arm64 | ✓ (keeptip writing, diagnostics, signature verification, and restoration verified on a copy of the official installer; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 269631 | 4.1.13.63 website edition, arm64 | ✓ (default keeptip writing, diagnostics, and restoration verified on a pristine copy; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 269627 | 4.1.13 | ✓ (patched locally; locations found by `tools/locate_revoke.py`) | ✓ (`tools/locate_update.py`, 8 locations) |
@@ -155,6 +155,15 @@ pkill -x WeChat
 > one slice of it. When a build has arm64 patch points only, `doctor` on an Intel Mac reports `unsupportedBuild`
 > (`arch_supported: false`) and `patch` writes nothing and says why — changing the arm64 slice does nothing for the WeChat an Intel Mac
 > runs, and earlier versions wrote it anyway and reported success. Apple Silicon users who run WeChat under Rosetta can set `WECHATTWEAK_HOST_ARCH=x86_64`.
+>
+> **Intel (x86_64) is currently covered for builds 270134 and 270102 only, with `keeptip` and the update block — there is no `silent` variant.**
+> The points come from static analysis of the x86_64 slice of the official installers: the updater's 8 methods are resolved by name through the
+> ObjC method table; the anti-recall point is the call that produces `newmsgid` inside the recall-XML parser (it now returns 0, so the store that
+> follows writes 0 — the equivalent of `str xzr` on arm64), and the lookup, end check, conversion and field store around it match arm64 instruction
+> for instruction, at the same field offset. Patching, diagnostics, strict signature verification and restoring were run on copies of the installers
+> with `WECHATTWEAK_HOST_ARCH=x86_64`, checking the bytes of both slices. **Nothing was run on an Intel Mac and no real recalled message was
+> received** — Intel users should test after patching, and run `wechattweak restore` and report if it misbehaves. `available_variants` in
+> `doctor --json` lists the variants usable on this Mac.
 
 > **"Permission denied" has five causes, each with its own fix**: when a write is refused, `patch` / `restore` print one more line,
 > `Write blocked: <cause>`, with the fix — `needsAdmin` (files owned by root: use sudo), `immutable` (files are locked: `chflags -R nouchg`;

@@ -76,6 +76,9 @@ struct Doctor {
         /// `patched` / `pristine` / `unknown` / nil when the build has no such target.
         var antiRevokeSilent: String?
         var antiRevokeKeeptip: String?
+        /// Anti-revoke variants (`silent` / `keeptip`) that have patch points for `hostArch` in this
+        /// build. Intel currently has keeptip only; a caller must not offer what is not listed.
+        var availableVariants: [String]
         /// Also `notApplicable` (App Store install / 3.x build without updater patch points) and
         /// `unavailable` (the updater could not be located); the reason is in `updateSource`.
         var updateBlock: String?
@@ -317,6 +320,9 @@ struct Doctor {
             entitlementKeyCount: mainEnts?.count ?? 0,
             antiRevokeSilent: silent?.rawValue,
             antiRevokeKeeptip: keeptip?.rawValue,
+            availableVariants: [(PatchVariant.keeptip, Command.keeptipRevokeIdentifier), (PatchVariant.silent, Command.silentRevokeIdentifier)]
+                .filter { pair in config.map { Command.supports(hostArch, $0.targets.filter { $0.identifier == pair.1 }) } ?? false }
+                .map(\.0.rawValue),
             updateBlock: updateNotApplicable ? "notApplicable" : (updateUnavailable ? "unavailable" : update?.rawValue),
             updateSource: updateSource,
             sparkle: sparkle,

@@ -13,7 +13,7 @@
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `270134` (4.x patches: arm64).
+> Anti-recall + auto-updater block for selected WeChat builds through `270134` (4.x patches: arm64; Intel for 270134 / 270102).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -68,8 +68,8 @@
 
 | 构建号 | 微信版本 | 防撤回 | 阻止自动更新 |
 | --- | --- | :---: | :---: |
-| 270134 | 4.1.15.54 官网版，arm64 | ✓（官方安装包副本在开启 SIP 的 Mac 上已验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后 11 处补丁点与原包逐字节一致；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
-| 270102 | 4.1.15.22 官网版，arm64 | ✓（同上，同一流程在 4.1.15.22 原包副本上通过；补丁点与 fzlzjerry/wechat-antirecall 及本仓定位器的结果三方一致） | ✓（8 处原始字节已核对，写入后体检通过） |
+| 270134 | 4.1.15.54 官网版，arm64 + Intel（见下） | ✓（官方安装包副本在开启 SIP 的 Mac 上已验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后 11 处补丁点与原包逐字节一致；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
+| 270102 | 4.1.15.22 官网版，arm64 + Intel（见下） | ✓（同上，同一流程在 4.1.15.22 原包副本上通过；补丁点与 fzlzjerry/wechat-antirecall 及本仓定位器的结果三方一致） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 270100 | 4.1.15 官网版，arm64 | ✓（官方安装包副本已验证 keeptip 写入、体检、签名校验和还原；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 269631 | 4.1.13.63 官网版，arm64 | ✓（原版副本已验证默认 keeptip 写入、体检和还原；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 269627 | 4.1.13 | ✓（本机已打，补丁点由 `tools/locate_revoke.py` 定位） | ✓（`tools/locate_update.py` 定位，8 处） |
@@ -155,6 +155,13 @@ pkill -x WeChat
 > 切片。补丁库里某个构建只有 arm64 补丁点时，Intel Mac 上 `doctor` 报 `unsupportedBuild`
 > （`arch_supported: false`），`patch` 不写任何字节并说明原因 —— 改 arm64 切片对 Intel 上运行的微信没有任何作用，
 > 此前的版本会照写并报成功。用 Rosetta 运行微信的 Apple Silicon 用户可设 `WECHATTWEAK_HOST_ARCH=x86_64`。
+>
+> **Intel（x86_64）目前只有 270134 和 270102 两个构建，且只有 `keeptip`（留提示）和阻止自动更新，没有 `silent`。**
+> 补丁点来自对官方安装包 x86_64 切片的静态分析：更新器 8 个方法按 ObjC 方法表按名取入口；防撤回点是解析撤回 XML 的函数里
+> 产生 `newmsgid` 的那次调用（改成返回 0，随后写入字段的就是 0，与 arm64 的 `str xzr` 等价），其前后的查表、判空、转换、
+> 写字段与 arm64 逐条对应，字段偏移相同。写入、体检、严格签名校验、还原已在原包副本上以 `WECHATTWEAK_HOST_ARCH=x86_64` 跑通，
+> 两个切片的字节都核对过。**没有在 Intel Mac 上运行过，也没有收过真实撤回消息**——Intel 用户打完请自己实测，
+> 不对就 `wechattweak restore` 还原并反馈。`doctor --json` 的 `available_variants` 列出本机可用的方式。
 
 > **「没有权限」有五种原因，办法各不相同**：写入被拒时 `patch` / `restore` 会多打一行 `Write blocked: <原因>` 和对应办法 ——
 > `needsAdmin`（文件属于 root，用 sudo）、`immutable`（文件被锁定，`chflags -R nouchg`，管理员密码绕不过）、

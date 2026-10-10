@@ -32,6 +32,12 @@
             "addr": "4d1d290",
             "expected": "60E600F9",
             "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "5502d5d",
+            "expected": "E8CE47E9FF",
+            "asm": "31C0909090"
           }
         ]
       },
@@ -86,11 +92,59 @@
             "addr": "298b94",
             "expected": "02640039",
             "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d0b60",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d31f0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d3510",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d3970",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2df230",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2df240",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2df250",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2df260",
+            "expected": "554889E5",
+            "asm": "C3909090"
           }
         ]
       }
     ],
-    "source": "tools/locate_revoke.py + tools/locate_update.py on pristine 4.1.15.54 (dmg sha256 a51d3f1bc7f47f204865270659806ed32fbb0ff3acade9b8952d4d403682a0b9)"
+    "source": "tools/locate_revoke.py + tools/locate_update.py on pristine 4.1.15.54 (dmg sha256 a51d3f1bc7f47f204865270659806ed32fbb0ff3acade9b8952d4d403682a0b9) | x86_64: revoke-keeptip and update located statically on the same pristine installer (ObjC method table by name; newmsgid store matched instruction-for-instruction against arm64). Not run on Intel hardware. No x86_64 silent point."
   },
   {
     "version": "270132",
@@ -218,6 +272,12 @@
             "addr": "4bc5b78",
             "expected": "60E600F9",
             "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "537e8cd",
+            "expected": "E83E4BE9FF",
+            "asm": "31C0909090"
           }
         ]
       },
@@ -272,11 +332,59 @@
             "addr": "2820b8",
             "expected": "02640039",
             "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2b8bb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2bb240",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2bb560",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2bb9c0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c7310",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c7320",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c7330",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c7340",
+            "expected": "554889E5",
+            "asm": "C3909090"
           }
         ]
       }
     ],
-    "source": "fzlzjerry/wechat-antirecall patches.json"
+    "source": "fzlzjerry/wechat-antirecall patches.json | x86_64: revoke-keeptip and update located statically on the same pristine installer (ObjC method table by name; newmsgid store matched instruction-for-instruction against arm64). Not run on Intel hardware. No x86_64 silent point."
   },
   {
     "version": "270100",
