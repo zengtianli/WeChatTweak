@@ -145,7 +145,10 @@ struct Doctor {
         let sig = capture("/usr/bin/codesign", ["-dvv", app.path])
         let authority = sig.split(separator: "\n").first { $0.hasPrefix("Authority=") }.map { String($0.dropFirst("Authority=".count)) }
         let adhoc = sig.contains("Signature=adhoc")
-        let signature = adhoc ? "ad-hoc (already re-signed by a tool)" : (authority ?? "unreadable")
+        let localIdentity = authority?.hasPrefix(LocalIdentity.commonName) == true
+        let signature = adhoc
+            ? "ad-hoc (changes with every patch, so Screen Recording / mic / camera grants stop matching; patch again to switch to this Mac's stable identity)"
+            : localIdentity ? "this Mac's signing identity (stable: privacy grants survive re-patching)" : (authority ?? "unreadable")
         lines.append("Signature:    \(signature)")
 
         let mainEnts = entitlementKeys(at: app)

@@ -191,6 +191,8 @@ python3 tools/locate_revoke.py --append && swift build -c release
 
 打补丁会自动重签名：先单独签被改的 `wechat.dylib`，再 `--deep` 签整个 App，并**逐组件保留原厂 entitlements**（微信是 App Sandbox + Hardened Runtime，沙盒/相机/麦克风/app-group 一项都不能丢）+ 注入两个 `com.apple.security.cs.*` 键让 ad-hoc 身份跑得起来；签完逐项比对，丢一项就报错。细节见 `Sources/WeChatTweak/Resigner.swift` 文件头。
 
+**签名身份（2026-11 起）**：重签默认用**本机专属签名身份**（首次打补丁时自动生成一个只存在这台 Mac 上的自签证书，放在 `~/Library/Application Support/WeChatTweak/signing/`，不进钥匙串列表），不再用 ad-hoc。原因：macOS 的录屏、麦克风、摄像头授权绑定在 App 的签名身份上，ad-hoc 身份随文件内容变化（切换 silent/keeptip、微信升级后重打都会变），系统设置里开关看着还开着，实际已失效，微信就会提示「录屏权限未开启」（WeChatUnrevoke #13）。改用本机身份后，以后重打补丁身份不变，授权一直有效。签完会让系统以挂起方式预检一次能否启动，不通过就自动退回 ad-hoc。身份变化的那一次，工具会清掉微信旧的失效授权，微信下次截屏/录屏/通话时系统会重新询问，允许一次即可。想沿用旧行为：`--signing adhoc`。
+
 ### 微信 3.8.x（上游 Homebrew，只覆盖 3.8.x）
 
 ```bash

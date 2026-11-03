@@ -12,6 +12,12 @@ import ArgumentParser
 /// - silent: neutralise the revoke XML parser entirely — message stays, no tip. (default, WeChat 4.x current release behaviour)
 /// - keeptip: let the parser run (tip renders) but zero out `newmsgid` so the downstream
 ///            delete-by-id finds nothing — message stays AND the recall tip still shows.
+/// How the patched bundle is re-signed. See LocalIdentity.swift.
+enum SigningMode: String, ExpressibleByArgument {
+    case local
+    case adhoc
+}
+
 enum PatchVariant: String, ExpressibleByArgument {
     case silent
     case keeptip
@@ -96,7 +102,8 @@ extension Tweak {
             do {
                 try await Command.resign(
                     app: options.app,
-                    patchedBinaries: outcome.touched
+                    patchedBinaries: outcome.touched,
+                    signing: options.signing
                 )
             } catch {
                 WriteAccess.summaryLines(error, app: options.app).forEach { print($0) }
@@ -139,7 +146,7 @@ extension Tweak {
                 print("Done!")
 
                 print("------ Resign ------")
-                try await Command.resign(app: options.app, patchedBinaries: restored)
+                try await Command.resign(app: options.app, patchedBinaries: restored, signing: options.signing)
             } catch {
                 WriteAccess.summaryLines(error, app: options.app).forEach { print($0) }
                 throw error
@@ -225,6 +232,11 @@ struct Tweak: AsyncParsableCommand {
             }
         )
         var config: URL = Options.resolveDefaultConfig()
+
+        @Option(
+            help: "How to re-sign after writing: local (this Mac's own signing identity, created once; Screen Recording / Microphone / Camera grants survive later patches and WeChat updates) | adhoc (identity changes with every patch, so those grants must be given again each time)."
+        )
+        var signing: SigningMode = .local
 
         /// Resolve the config.json to use by default.
         ///

@@ -73,8 +73,13 @@ struct Resigner {
 
     // MARK: - Entry point
 
+    /// The identity to sign with; nil = ad-hoc. Set by `Command.resign` (see LocalIdentity.swift
+    /// for why a stable identity matters: privacy grants follow the designated requirement).
+    nonisolated(unsafe) static var identity: LocalIdentity?
+
     static func resign(app: URL, patchedBinaries: [URL]) throws {
         removeSigningLeftovers(in: app)
+        identity?.unlock()
         let snapshot = try capture(app: app)
         print(String(format: "[resign] %d signed code objects, %d with entitlements",
                      snapshot.entries.count, snapshot.entries.filter { $0.plist != nil }.count))
@@ -179,7 +184,11 @@ struct Resigner {
         var args = ["--force"]
         if deep { args.append("--deep") }
         args.append("--preserve-metadata=identifier,flags,runtime")
-        args += ["--sign", "-"]
+        if let identity {
+            args += ["--keychain", identity.keychain.path, "--sign", identity.sha1]
+        } else {
+            args += ["--sign", "-"]
+        }
         var tmpDir: URL?
         defer { if let d = tmpDir { try? FileManager.default.removeItem(at: d) } }
         if let entitlements {

@@ -374,11 +374,81 @@ struct Command {
 
     /// Re-sign after patching. See `Resigner.swift` for why this is more than
     /// `codesign --deep --sign -` (App Sandbox + Hardened Runtime + Team-ID entitlements).
-    static func resign(app: URL, patchedBinaries: [String] = []) async throws {
+    static func resign(app: URL, patchedBinaries: [String] = [], signing: SigningMode = .local) async throws {
         let nested = patchedBinaries
             .filter { $0 != Command.defaultBinary }
             .map { app.appendingPathComponent($0) }
+        let before = designatedRequirement(of: app)
+        Resigner.identity = nil
+        if signing == .local {
+            do {
+                Resigner.identity = try LocalIdentity.ensure()
+            } catch {
+                print("[resign] note: \(error.localizedDescription)")
+                print("[resign] falling back to ad-hoc: Screen Recording / Microphone / Camera have to be allowed again after every patch")
+            }
+        }
+        print("[resign] signing as \(Resigner.identity.map { "this Mac's identity \($0.sha1.prefix(8))…" } ?? "ad-hoc")")
         try Resigner.resign(app: app, patchedBinaries: nested)
+        if Resigner.identity != nil {
+            // Never leave WeChat signed in a way the system would refuse to start.
+            let refused = LaunchProbe.refusals(in: app)
+            if refused.isEmpty {
+                print("[resign] launch check: macOS accepts the signature")
+            } else {
+                refused.forEach { print("[resign] launch check: \($0)") }
+                print("[resign] falling back to ad-hoc (privacy grants will have to be given again after every patch)")
+                Resigner.identity = nil
+                try Resigner.resign(app: app, patchedBinaries: nested)
+            }
+        }
+        let after = designatedRequirement(of: app)
+        if let after, after != before {
+            resetPrivacyGrants(app: app)
+        }
+    }
+
+    /// `designated => …` of the bundle, nil when unreadable.
+    static func designatedRequirement(of app: URL) -> String? {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        p.arguments = ["-d", "-r-", app.path]
+        let pipe = Pipe()
+        p.standardOutput = pipe; p.standardError = pipe
+        guard (try? p.run()) != nil else { return nil }
+        let out = String(decoding: pipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+        p.waitUntilExit()
+        return out.split(separator: "\n").first { $0.contains("designated =>") }
+            .map { String($0[$0.range(of: "designated =>")!.upperBound...]).trimmingCharacters(in: .whitespaces) }
+    }
+
+    /// Privacy services whose grants are bound to the signature and that WeChat uses.
+    static let signatureBoundServices = ["ScreenCapture", "Microphone", "Camera"]
+
+    /// The signature identity just changed, so every existing grant for WeChat now refers to code
+    /// that no longer exists: System Settings keeps showing the switch ON while macOS denies
+    /// (WeChatUnrevoke #13, "录屏权限未开启"). Clearing those dead entries lets WeChat ask again
+    /// and the new grant is recorded against the current identity. Best-effort.
+    static func resetPrivacyGrants(app: URL) {
+        // Tests and experiments on a copy share the real WeChat's bundle id; don't touch its grants.
+        if ProcessInfo.processInfo.environment["WECHATTWEAK_KEEP_PRIVACY_GRANTS"] == "1" {
+            print("[resign] signature identity changed (privacy entries left alone: WECHATTWEAK_KEEP_PRIVACY_GRANTS=1)")
+            return
+        }
+        guard let bundleID = Bundle(url: app)?.bundleIdentifier else { return }
+        let user = LocalIdentity.realUser()
+        var cleared: [String] = []
+        for service in signatureBoundServices {
+            var ok = false
+            if getuid() == 0, let user {
+                // Microphone/Camera live in the user's own TCC database: reset as that user.
+                ok = LocalIdentity.capture("/usr/bin/sudo", ["-n", "-u", user.name, "/usr/bin/tccutil", "reset", service, bundleID]).status == 0
+            }
+            if LocalIdentity.capture("/usr/bin/tccutil", ["reset", service, bundleID]).status == 0 { ok = true }
+            if ok { cleared.append(service) }
+        }
+        print("[resign] signature identity changed: cleared WeChat's old \(cleared.isEmpty ? "(none could be cleared)" : cleared.joined(separator: " / ")) permission entries;")
+        print("[resign] macOS will ask again the first time WeChat records the screen or uses the mic/camera.")
     }
 
     @discardableResult

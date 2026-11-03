@@ -194,6 +194,8 @@ Both routes verify the original bytes before writing. A wrong address produces `
 
 Patching automatically re-signs the bundle: first the modified `wechat.dylib`, then the entire App with `--deep`, while **preserving the original entitlements of every component** (WeChat uses App Sandbox + Hardened Runtime; sandbox, camera, microphone, and app-group entitlements must all remain). It also injects two `com.apple.security.cs.*` keys so ad-hoc signing works. After signing, it compares every entitlement and fails if any are missing. See the header of `Sources/WeChatTweak/Resigner.swift` for details.
 
+**Signing identity (since 2026-11)**: re-signing now uses **this Mac's own signing identity** by default instead of ad-hoc. On the first patch the tool creates a self-signed certificate that exists only on this Mac, in `~/Library/Application Support/WeChatTweak/signing/`, kept out of the keychain search list. Why: macOS binds Screen Recording, Microphone and Camera grants to the app's signing identity, and an ad-hoc identity changes with the bundle's contents (switching silent/keeptip, or re-patching after a WeChat update). System Settings still shows the switch ON, but the grant no longer matches and WeChat says screen recording is not allowed (WeChatUnrevoke #13). With the local identity, re-patching keeps the same identity and the grants stay valid. After signing, the tool asks macOS to validate a suspended launch; if that is refused it falls back to ad-hoc automatically. When the identity changes, the tool clears WeChat's stale grants, so macOS asks again the next time WeChat captures the screen or uses the mic/camera; allow it once. To keep the old behaviour: `--signing adhoc`.
+
 ### WeChat 3.8.x (upstream Homebrew; 3.8.x only)
 
 ```bash
