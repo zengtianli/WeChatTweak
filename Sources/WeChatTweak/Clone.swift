@@ -141,17 +141,28 @@ struct Clone {
         print("Bundle identifier: \(bundleID)")
 
         print("------ Resign ------")
-        try await Command.resign(app: work, patchedBinaries: touched, signing: signing, cloneIdentifier: bundleID)
+        // The work copy starts out with the source's signature, so "did the identity change" is
+        // judged against the copy being replaced, not inside resign: a rebuild under the same
+        // identity keeps the copy's privacy grants.
+        try await Command.resign(app: work, patchedBinaries: touched, signing: signing, cloneIdentifier: bundleID, resetGrants: false)
         let signed = signedIdentifier(of: work)
         guard signed == bundleID else { throw Error.identifierNotApplied(wanted: bundleID, got: signed) }
+        let previous = fm.fileExists(atPath: destination.path) ? Command.designatedRequirement(of: destination) : nil
+        let identityChanged = previous != Command.designatedRequirement(of: work)
 
-        // Swap in: the old copy goes only after the new one is complete.
+        // Swap in: the old copy goes only after the new one is complete — to the Trash when
+        // possible, so the version that was working can still be put back.
         if fm.fileExists(atPath: destination.path) {
             guard !Command.isRunning(app: destination) else { throw Error.destinationRunning(destination.path) }
-            try fm.removeItem(at: destination)
+            if getuid() == 0 || (try? fm.trashItem(at: destination, resultingItemURL: nil)) == nil {
+                try fm.removeItem(at: destination)
+            } else {
+                print("Previous copy moved to the Trash.")
+            }
         }
         try fm.moveItem(at: work, to: destination)
         finished = true
+        if identityChanged { Command.resetPrivacyGrants(app: destination) }
         print("------ Done ------")
         print("Second WeChat: \(destination.path)")
         print("It has its own login and chat history (~/Library/Containers/\(bundleID)/); the first WeChat is untouched.")

@@ -383,7 +383,7 @@ struct Command {
 
     /// Re-sign after patching. See `Resigner.swift` for why this is more than
     /// `codesign --deep --sign -` (App Sandbox + Hardened Runtime + Team-ID entitlements).
-    static func resign(app: URL, patchedBinaries: [String] = [], signing: SigningMode = .local, cloneIdentifier: String? = nil) async throws {
+    static func resign(app: URL, patchedBinaries: [String] = [], signing: SigningMode = .local, cloneIdentifier: String? = nil, resetGrants: Bool = true) async throws {
         Resigner.cloneIdentifier = cloneIdentifier
         defer { Resigner.cloneIdentifier = nil }
         let nested = patchedBinaries
@@ -414,7 +414,7 @@ struct Command {
             }
         }
         let after = designatedRequirement(of: app)
-        if let after, after != before {
+        if resetGrants, let after, after != before {
             resetPrivacyGrants(app: app)
         }
     }
