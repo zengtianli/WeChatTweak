@@ -115,6 +115,11 @@ struct Command {
         isAppStoreInstall(app: app) ? "appStore" : "direct"
     }
 
+    /// `CFBundleVersion`, the build number config.json is keyed by.
+    static func buildNumber(app: URL) -> String? {
+        NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String
+    }
+
     static func version(app: URL) async throws -> String? {
         try await Command.execute(command: "defaults read \(q(app.appendingPathComponent("Contents/Info.plist").path)) CFBundleVersion")
     }
@@ -174,7 +179,9 @@ struct Command {
         try patchFeatures(app: app, config: config, variant: variant, autoLocate: autoLocate, blockUpdate: blockUpdate, hostArch: hostArch).touched
     }
 
-    static func patchFeatures(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, blockUpdate: Bool = true, hostArch: Config.Arch = Command.hostArch) throws -> PatchOutcome {
+    /// `antiRevoke: false` leaves the anti-revoke bytes exactly as they are and only handles the
+    /// update block (used for a copy, which inherits the source's anti-revoke state).
+    static func patchFeatures(app: URL, config: Config, variant: PatchVariant = .silent, autoLocate: Bool = false, antiRevoke: Bool = true, blockUpdate: Bool = true, hostArch: Config.Arch = Command.hostArch) throws -> PatchOutcome {
         var outcome = PatchOutcome()
 
         // ── Anti-revoke (plus build extras such as multiInstance) ──
@@ -188,7 +195,9 @@ struct Command {
             }
         }
         let wantedRevoke = variant == .keeptip ? Command.keeptipRevokeIdentifier : Command.silentRevokeIdentifier
-        if !revokeTargets.contains(where: { $0.identifier == wantedRevoke }) {
+        if !antiRevoke {
+            revokeTargets = []
+        } else if !revokeTargets.contains(where: { $0.identifier == wantedRevoke }) {
             // keeptip needs a `revoke-keeptip` target: derive it (--auto-locate) or report it —
             // never claim anti-revoke without touching a byte.
             do {
@@ -374,7 +383,9 @@ struct Command {
 
     /// Re-sign after patching. See `Resigner.swift` for why this is more than
     /// `codesign --deep --sign -` (App Sandbox + Hardened Runtime + Team-ID entitlements).
-    static func resign(app: URL, patchedBinaries: [String] = [], signing: SigningMode = .local) async throws {
+    static func resign(app: URL, patchedBinaries: [String] = [], signing: SigningMode = .local, cloneIdentifier: String? = nil) async throws {
+        Resigner.cloneIdentifier = cloneIdentifier
+        defer { Resigner.cloneIdentifier = nil }
         let nested = patchedBinaries
             .filter { $0 != Command.defaultBinary }
             .map { app.appendingPathComponent($0) }

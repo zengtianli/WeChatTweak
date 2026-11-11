@@ -46,7 +46,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 | **Anti-recall (silent variant)** | Recalled messages remain unchanged in the chat, with no notice | ✓ | ✓ (current release) |
 | **Anti-recall (keep-notice variant)** | Keeps the message **and** the “The other party recalled a message” notice | ✓ | ⚠️ (`--variant keeptip`: notices in **private chats**; **group chats** remain silent) |
 | **Block automatic updates** | Stops updates from reverting patches (WeChat replaces the entire bundle; it has silently erased patches four times, and `defaults write` cannot disable it) | ✓ | ✓ (included in `patch` by default and independent of anti-recall: if it cannot be applied, anti-recall still is and the reason is shown; disable with `--no-block-update`) |
-| **Multiple client instances** | Sign into multiple accounts at once | ✓ | — (no byte patch for 4.x; duplicate the App) |
+| **Multiple client instances** | Sign into multiple accounts at once | ✓ | ✓ (`wechattweak clone` makes a second WeChat in one command, see below) |
 
 > **WeChat 4.x has two anti-recall variants; select one with `--variant` when patching**:
 > - **`--variant silent` (default)**: blocks recall at the upstream parser. The message stays, but no “The other party recalled a message” notice appears.
@@ -54,7 +54,22 @@ and uses this repository's `config.json` patch database (so the installed app ca
 >
 > The `keeptip` variant was **tested on a real device with build 269136 (4.1.11)**: recalled messages remain with notices in **private chats**; in **group chats**, messages remain but there is still no notice (the same behavior as the silent variant). The underlying conflict is that `newmsgid` controls both “which message to delete” and “which message the group-chat notice appears below.” Zeroing it preserves the message but prevents native group-notice insertion (private-chat notices do not depend on newmsgid). Group notices require preserving the real newmsgid and blocking the downstream deletion call instead. That call uses virtual dispatch and cannot be located statically; finding it dynamically with lldb is a separate engineering task (see the end of the [keep-notice variant](#留提示变体--variant-keeptip) section). In issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038), wuliyc reported similar behavior on 4.1.11 without specifying whether it concerned private or group chats.
 >
-> Running multiple WeChat 4.x instances still requires duplicating the entire App bundle.
+> **On WeChat 4.x, use `wechattweak clone`** ([#11](https://github.com/zengtianli/WeChatTweak/issues/11)):
+>
+> ```sh
+> wechattweak clone                     # /Applications/WeChat.app → ~/Applications/WeChat2.app
+> wechattweak clone --to ~/Applications/WeChat3.app --bundle-id com.tencent.xinWeChat3   # one more
+> ```
+>
+> No sudo; the first WeChat is only read and may stay open. The copy is a full-bundle clone (no extra disk space on APFS) with its own bundle identifier, login and chat history (`~/Library/Containers/<bundle id>/`), and it inherits the first WeChat's current anti-revoke state; change it later with `patch -a <copy>`. After a WeChat update, run the same command again to rebuild the copy from the new version; chat data lives outside the bundle and is kept.
+>
+> Notes and limits:
+> - The copy's built-in updater has to be blocked in the binary. Otherwise the next automatic update replaces the copy with the official bundle, the identifier is `com.tencent.xinWeChat` again, and it quits silently one second after launch. So for the **direct-download WeChat the build must be supported** (the update block must apply); when it cannot, the command fails and leaves nothing behind. The App Store edition has no updater in the bundle and is not limited by this.
+> - The copy drops the App Sandbox and Tencent's application group: a copy that keeps them crashes in WeChatAppEx when both are open (verified on 270102). As a side effect the copy writes crash records and logs under `~/Documents/app_data/`; chat data stays in its own container directory.
+> - The copy asks for Screen Recording, Microphone and Camera once on first use; it is signed with this Mac's fixed identity by default, so the grants survive a rebuild.
+> - Verified on 4.1.15.22 (270102, direct download, arm64, a Mac with SIP disabled): the copy and the first WeChat run side by side with separate data directories. SIP-enabled Macs and long-term use after a real login still need feedback. Whether running several accounts triggers WeChat's risk control is outside this tool's control; use at your own risk.
+>
+> The older per-build byte patch remains for one build only.
 
 ## Supported versions
 

@@ -117,6 +117,52 @@ extension Tweak {
 
 }
 
+// MARK: Clone
+extension Tweak {
+    struct Clone: AsyncParsableCommand {
+        static let configuration = CommandConfiguration(
+            abstract: "Make a second WeChat that runs next to the first one, with its own login and chat history",
+            discussion: """
+                Copies WeChat.app (an APFS clone: no extra disk space), blocks the copy's built-in updater, gives it \
+                its own bundle identifier and re-signs it. The source WeChat is only read and may stay open. \
+                The copy inherits the source's anti-revoke state; `patch -a <copy>` changes it later. \
+                Run it again after WeChat was updated to rebuild the copy from the new version — chat data \
+                lives outside the bundle and is kept.
+                """
+        )
+
+        @OptionGroup
+        var options: Tweak.Options
+
+        @Option(name: .long, help: "Where to put the copy.", transform: { URL(fileURLWithPath: NSString(string: $0).expandingTildeInPath) })
+        var to: URL = WeChatTweak.Clone.defaultDestination()
+
+        @Option(name: .long, help: "Bundle identifier of the copy. Each copy needs its own; it also names the copy's data directory.")
+        var bundleId: String = WeChatTweak.Clone.originalBundleID + "2"
+
+        mutating func run() async throws {
+            let build = Command.buildNumber(app: options.app)
+            // The config is only needed to block the updater; an App Store build has none.
+            let config = Command.isAppStoreInstall(app: options.app)
+                ? nil
+                : (try? await Config.load(url: options.config))?.first(where: { $0.version == build })
+            do {
+                try await WeChatTweak.Clone.make(
+                    source: options.app,
+                    destination: to,
+                    bundleID: bundleId,
+                    config: config,
+                    signing: options.signing
+                )
+            } catch {
+                WriteAccess.summaryLines(error, app: to.deletingLastPathComponent()).forEach { print($0) }
+                throw error
+            }
+            Darwin.exit(EXIT_SUCCESS)
+        }
+    }
+}
+
 // MARK: Restore
 extension Tweak {
     struct Restore: AsyncParsableCommand {
@@ -276,6 +322,7 @@ struct Tweak: AsyncParsableCommand {
             Versions.self,
             Patch.self,
             Restore.self,
+            Clone.self,
             Doctor.self
         ]
     )

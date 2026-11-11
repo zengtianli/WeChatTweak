@@ -59,6 +59,10 @@ struct Doctor {
         /// false → config.json knows this build, but has no anti-revoke patch points for `hostArch`.
         var archSupported: Bool
         var appPath: String
+        /// `CFBundleIdentifier` of the inspected bundle; `com.tencent.xinWeChat` unless it is a copy.
+        var bundleID: String
+        /// true → a second WeChat made by `clone` (own bundle identifier, own data).
+        var isCopy: Bool
         var configKnown: Bool
         var configTargets: [String]
         var sip: SIP
@@ -167,7 +171,14 @@ struct Doctor {
         if !nested.isEmpty {
             lines.append("              nested app/appex/xpc: \(nested.count), \(strippedNested.count) without entitlements (some helpers ship none even pristine — informational; the verdict keys off the main executable)")
         }
-        let stripped = mainEnts == nil || !sandboxed || !hasTeam
+        // A copy made by `clone` runs under its own bundle identifier and deliberately carries no
+        // sandbox / Tencent application-identifier (see Clone.swift); that is not a stripped bundle.
+        let bundleID = Clone.bundleID(of: app)
+        let isCopy = !bundleID.isEmpty && bundleID != Clone.originalBundleID
+        if isCopy {
+            lines.append("Copy:         second WeChat, bundle id \(bundleID) — own login and data; runs without the App Sandbox by design")
+        }
+        let stripped = mainEnts == nil || (!isCopy && (!sandboxed || !hasTeam))
 
         // 5. Sparkle prefs (informational — the binary block is what actually holds)
         let sparkle = [
@@ -311,6 +322,8 @@ struct Doctor {
             hostArch: hostArch.rawValue,
             archSupported: !revokeArchMissing,
             appPath: app.path,
+            bundleID: bundleID,
+            isCopy: isCopy,
             configKnown: config != nil,
             configTargets: config?.targets.map(\.identifier) ?? [],
             sip: sip,

@@ -77,7 +77,15 @@ struct Resigner {
     /// for why a stable identity matters: privacy grants follow the designated requirement).
     nonisolated(unsafe) static var identity: LocalIdentity?
 
+    /// Set while signing a copy made by `Clone`: the root bundle is signed under this identifier
+    /// (not the preserved `com.tencent.xinWeChat`), and every profile loses the entitlements
+    /// that bind it to Tencent's identity (`Clone.isIdentityBound`).
+    nonisolated(unsafe) static var cloneIdentifier: String?
+    nonisolated(unsafe) private static var cloneRoot: String?
+
     static func resign(app: URL, patchedBinaries: [URL]) throws {
+        cloneRoot = cloneIdentifier == nil ? nil : app.standardizedFileURL.path
+        defer { cloneRoot = nil }
         removeSigningLeftovers(in: app)
         identity?.unlock()
         let snapshot = try capture(app: app)
@@ -100,6 +108,11 @@ struct Resigner {
             try restore(snapshot, app: app)
             drifted = try mismatches(snapshot)
             guard drifted.isEmpty else { throw Error.entitlementsMismatch(drifted) }
+        }
+        if cloneIdentifier != nil {
+            // The --deep pass keeps the original identifier; the root is signed once more on its
+            // own, last, so the copy's signature carries its own identifier whatever happened above.
+            try signMachO(app, entitlements: snapshot.plist(for: app))
         }
 
         stripQuarantine(app)
@@ -183,7 +196,11 @@ struct Resigner {
     private static func codesign(_ url: URL, deep: Bool, entitlements: Data?) throws {
         var args = ["--force"]
         if deep { args.append("--deep") }
-        args.append("--preserve-metadata=identifier,flags,runtime")
+        if !deep, let id = cloneIdentifier, url.standardizedFileURL.path == cloneRoot {
+            args += ["--preserve-metadata=flags,runtime", "--identifier", id]
+        } else {
+            args.append("--preserve-metadata=identifier,flags,runtime")
+        }
         if let identity {
             args += ["--keychain", identity.keychain.path, "--sign", identity.sha1]
         } else {
@@ -271,6 +288,9 @@ struct Resigner {
         else { return plist }
         for (k, v) in injectedEntitlements { dict[k] = v }
         for k in dict.keys where isRestricted(k) { dict[k] = nil }
+        if cloneIdentifier != nil {
+            for k in dict.keys where Clone.isIdentityBound(k) { dict[k] = nil }
+        }
         return (try? PropertyListSerialization.data(fromPropertyList: dict, format: .xml, options: 0)) ?? plist
     }
 
