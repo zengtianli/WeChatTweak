@@ -1,5 +1,97 @@
 [
   {
+    "version": "270416",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4666e98",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4666e98",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4667638",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "283294",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2851d8",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "285448",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2857ec",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28ef18",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28ef20",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28ef28",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28ef30",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          }
+        ]
+      }
+    ]
+  },
+  {
     "version": "270135",
     "targets": [
       {
