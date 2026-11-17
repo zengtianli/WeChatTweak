@@ -13,7 +13,7 @@ A command-line tool for modifying the WeChat client on macOS.
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `270135` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
+> Anti-recall + auto-updater block for selected WeChat builds through `270416` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -32,7 +32,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 > **How this fork relates to upstream**: upstream [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak)
 > (13.8k★, 1.6k forks) **has had no commits since February 2026**, while WeChat 4.x moved all recall logic into
 > `Contents/Resources/wechat.dylib`, invalidating every patch location it knew. This fork picks up from 4.1.10 (build 268880),
-> now covering selected builds through **build 270135 (4.1.15.55)** (not every intervening build; the 4.x patches target arm64), and adds:
+> now covering selected builds through **build 270416 (4.2.0)** (not every intervening build; the 4.x patches target arm64), and adds:
 >
 > - Patching **a specified target dylib** (the 4.x logic is no longer in the main executable)
 > - **Original-byte verification before writing**: a wrong version produces an error instead of a blind write that damages WeChat
@@ -41,18 +41,20 @@ and uses this repository's `config.json` patch database (so the installed app ca
 
 ## Features
 
-| Feature | Description | WeChat 3.8.x | WeChat 4.x (listed builds through 270135) |
+| Feature | Description | WeChat 3.8.x | WeChat 4.x (listed builds through 270416) |
 | --- | --- | :---: | :---: |
 | **Anti-recall (silent variant)** | Recalled messages remain unchanged in the chat, with no notice | ✓ | ✓ (current release) |
-| **Anti-recall (keep-notice variant)** | Keeps the message **and** the “The other party recalled a message” notice | ✓ | ⚠️ (`--variant keeptip`: notices in **private chats**; **group chats** remain silent) |
+| **Anti-recall (keep-notice variant)** | Keeps others' messages and notices; handles your own recall natively | ✓ | ✓ (group notices on 270416; self-recall fix awaits real-chat verification) |
 | **Block automatic updates** | Stops updates from reverting patches (WeChat replaces the entire bundle; it has silently erased patches four times, and `defaults write` cannot disable it) | ✓ | ✓ (included in `patch` by default and independent of anti-recall: if it cannot be applied, anti-recall still is and the reason is shown; disable with `--no-block-update`) |
 | **Multiple client instances** | Sign into multiple accounts at once | ✓ | ✓ (`wechattweak clone` makes a second WeChat in one command, see below) |
 
 > **WeChat 4.x has two anti-recall variants; select one with `--variant` when patching**:
 > - **`--variant silent` (default)**: blocks recall at the upstream parser. The message stays, but no “The other party recalled a message” notice appears.
-> - **`--variant keeptip`**: keeps the message **and** the recall notice. In contrast to the silent variant, it lets parsing run so the notice can render, but rewrites `newmsgid`, which identifies the message to delete, to 0 when it is stored in the structure. Downstream deletion by `newmsgid` then finds no target, leaving the message and the normal notice. This approach (`str x0`→`str xzr`) comes from the `revoke-tip` mode in the reference implementation [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall).
+> - **`--variant keeptip`**: keeps the message **and** the recall notice. It normally lets parsing run and clears `newmsgid`, the ID of the message to delete; build 270416 is an exception that distinguishes your own recall from other people's by the notice text, as described below. The unconditional zeroing approach (`str x0`→`str xzr`) comes from the `revoke-tip` mode in [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall).
 >
 > The `keeptip` variant was **tested on a real device with build 269136 (4.1.11)**: recalled messages remain with notices in **private chats**; in **group chats**, messages remain but there is still no notice (the same behavior as the silent variant). The underlying conflict is that `newmsgid` controls both “which message to delete” and “which message the group-chat notice appears below.” Zeroing it preserves the message but prevents native group-notice insertion (private-chat notices do not depend on newmsgid). Group notices require preserving the real newmsgid and blocking the downstream deletion call instead. That call uses virtual dispatch and cannot be located statically; finding it dynamically with lldb is a separate engineering task (see the end of the [keep-notice variant](#留提示变体--variant-keeptip) section). In issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038), wuliyc reported similar behavior on 4.1.11 without specifying whether it concerned private or group chats.
+
+> **Build 270416 (4.2.0) exception**: group notices for other people's recalls have been verified. To avoid two identical notices when recalling from this Mac, its `keeptip` patch scans the revoke XML at the parser exit: for `你撤回` / `你收回` / `你回收` or `You recalled`, it keeps the real `newmsgid` so WeChat handles the local recall natively; other recalls still get a zero ID, preserving the message and notice. The new self-recall condition has passed static byte checks; real-chat verification is pending.
 >
 > **On WeChat 4.x, use `wechattweak clone`** ([#11](https://github.com/zengtianli/WeChatTweak/issues/11)):
 >
@@ -83,6 +85,7 @@ The sample for build 270100 is the installer downloaded on 2026-09-24 from the [
 
 | Build | WeChat version | Anti-recall | Block automatic updates |
 | --- | --- | :---: | :---: |
+| 270416 | 4.2.0, arm64 | `keeptip` keeps the real ID for your own recall so WeChat handles it natively; others still get ID zero to retain the message and notice. Self-recall fix awaits real-chat verification. | Eight update points are listed locally; applicability depends on the install channel |
 | 270135 | 4.1.15.55 website edition, arm64 + Intel | Both architectures: original bytes, write/idempotence/byte-for-byte restoration verified on an isolated dylib; real-chat and native Intel runtime untested. Intel supports keeptip only. | 8 methods per architecture checked and patched on the isolated dylib; full-bundle re-signing not re-tested for this build |
 | 270134 | 4.1.15.54 website edition, arm64 + Intel (see below) | ✓ (keeptip and silent writing, diagnostics, strict signature verification, and restoration verified on a copy of the official installer on a Mac with SIP enabled; after restoring, all 11 patch points match the original byte for byte; real-chat recall testing remains for the user) | ✓ (original bytes checked at 8 locations; post-write diagnostics passed) |
 | 270115 | 4.1.15.35 App Store edition, arm64 | ✓ (located by a contributor on a pristine App Store install with `tools/locate_revoke.py` (third-generation signature) and checked by disassembly: `cbz w0` / `str x0,[x19,#0x1c8]`; keeptip and silent writing, diagnostics, strict signature verification, and restoration verified on a copy on a Mac with SIP enabled, both patch points back to the original instructions after restoring; keeptip verified with a real recalled message by two contributors on their own App Store installs (a second machine independently reproduced the sample hashes and patch points, see PR #9); silent not tested in a real chat; Intel not verified) | Not applicable: the App Store edition has no built-in updater (no `XAppUpdateManager`), so `patch` skips this step; turn off App Store automatic updates to keep the patch |
@@ -274,7 +277,7 @@ The parsed recall notice is inserted normally, while deletion misses its target 
 >
 > **Why group chats show no notice**: throughout the revoke module (`0x48a0140..0x48ad700`), only `0x48a0b44` writes the newmsgid field `[x19,#0x168]`, shared by private and group chats. Private-chat notice insertion does not depend on newmsgid, so it still works. Group-chat rendering uses newmsgid to choose the message below which to attach the notice; zeroing it also disables that insertion, leaving group chats silent. This downstream consumer uses virtual dispatch/chained fixups, so a separate group-notice patch location cannot be identified statically with byte patching alone.
 >
-> **Runtime injection (fzlzjerry `--runtime-tip`) does not fix group chats either.** Inspection of its `Runtime.mm` confirms that its hook only **rewrites the replaceMsg notice text** after parsing, still zeroes newmsgid, and relies on WeChat's **native** code to insert the notice. There is no independent insertion call anywhere (zero objc_msgSend/selector). It reaches the same newmsgid=0 state as this byte patch, so native group insertion still does not trigger. **The actual solution** is to preserve the real newmsgid so native notices can be inserted and anchored in both private and group chats, then NOP the downstream deletion call. That virtually dispatched call cannot be located statically; it requires dynamic lldb investigation (trigger a real group-chat recall, break on the WCDB deletion primitive, and inspect the backtrace). This is a separate task requiring real-device testing and is not included in this fork.
+> **For build 269136, runtime injection (fzlzjerry `--runtime-tip`) does not fix group chats either.** Inspection of its `Runtime.mm` confirms that its hook only **rewrites the replaceMsg notice text** after parsing, still zeroes newmsgid, and relies on WeChat's **native** code to insert the notice. There is no independent insertion call anywhere (zero objc_msgSend/selector). It reaches the same newmsgid=0 state as this byte patch, so native group insertion still does not trigger. For that build, the actual solution is to preserve the real newmsgid so native notices can be inserted and anchored in both private and group chats, then NOP the downstream deletion call. That virtually dispatched call cannot be located statically; it requires dynamic lldb investigation (trigger a real group-chat recall, break on the WCDB deletion primitive, and inspect the backtrace). This 269136 conclusion does not apply to 270416, which has different group-notice behavior and its own conditional patch above.
 
 <a id="新增一个版本"></a>
 

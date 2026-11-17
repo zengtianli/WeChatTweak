@@ -13,7 +13,7 @@
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `270135` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
+> Anti-recall + auto-updater block for selected WeChat builds through `270416` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -32,7 +32,7 @@
 > **本 fork 与上游的关系**：上游 [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak)
 > （13.8k★、1.6k fork）**最后一次提交停在 2026 年 2 月**，而微信 4.x 把撤回逻辑整体搬进了
 > `Contents/Resources/wechat.dylib`，它知道的补丁点全部失效。本 fork 从 4.1.10（build 268880）接上，
-> 现已收录至 **build 270135（4.1.15.55）**（并非覆盖期间每一个构建号，4.x 补丁为 arm64），并且：
+> 现已收录至 **build 270416（4.2.0）**（并非覆盖期间每一个构建号，4.x 补丁为 arm64），并且：
 >
 > - 支持**按目标 dylib** 打补丁（4.x 的逻辑不在主程序里了）
 > - **写入前校验原始字节** —— 打错版本直接报错，不会盲写把微信弄坏
@@ -41,18 +41,20 @@
 
 ## 功能
 
-| 功能 | 说明 | 微信 3.8.x | 微信 4.x（已收录构建，至 270135） |
+| 功能 | 说明 | 微信 3.8.x | 微信 4.x（已收录构建，至 270416） |
 | --- | --- | :---: | :---: |
 | **防撤回（静默变体）** | 别人撤回的消息原样留在聊天里，不弹提示 | ✓ | ✓（当前发布版） |
-| **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ⚠️（`--variant keeptip`：**私聊**有提示；**群聊**仍静默无提示） |
+| **防撤回（留提示变体）** | 别人的消息留着且有撤回提示；本人撤回按微信原生行为 | ✓ | ✓（270416 群聊提示正常；本人撤回修复待实测） |
 | **阻止自动更新** | 拦住自动升级，避免升级把补丁还原（微信更新是整包替换，四次把补丁静默抹掉；`defaults write` 关不掉） | ✓ | ✓（`patch` 默认同时打；与防撤回相互独立，拦不住时照打防撤回并说明原因；`--no-block-update` 关） |
 | **客户端多开** | 同时登录多个账号 | ✓ | ✓（`wechattweak clone`：一条命令做出第二个微信，见下） |
 
 > **微信 4.x 上有两种防撤回变体，打补丁时用 `--variant` 选**：
 > - **`--variant silent`（默认）**：撤回被拦在最上游的解析器，消息留着，但不弹「对方撤回了一条消息」提示。
-> - **`--variant keeptip`**：消息留着 **且** 仍显示撤回提示。做法与静默相反——让解析器照跑（提示才会渲染），只把「要删哪条」的 `newmsgid` 在写入结构体那一刻改写为 0，于是下游按 `newmsgid` 删本地消息时找不到目标、删不掉，消息保留而提示照常。这条思路（改 `str x0`→`str xzr`）来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
+> - **`--variant keeptip`**：消息留着 **且** 仍显示撤回提示。通常让解析器照跑并把要删除的 `newmsgid` 清零；270416 是例外，会按撤回文案区分本人撤回与他人撤回，见下文。无条件清零的思路（改 `str x0`→`str xzr`）来自参考实现 [fzlzjerry/wechat-antirecall](https://github.com/fzlzjerry/wechat-antirecall) 的 `revoke-tip` 模式。
 >
 > `keeptip` 变体在 **build 269136（4.1.11）实机实测**：**私聊**撤回后消息保留且显示提示；**群聊**撤回消息虽保留、但仍无提示（表现同静默变体）。根本矛盾：`newmsgid` 同时控制「删哪条消息」和「群聊提示插到哪条下面」——清零它虽保住了消息，却也让群聊提示的原生插入不再触发（私聊提示不依赖 newmsgid，故照出）。群聊要出提示，必须保留真 newmsgid、转而在下游掐掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需动态（lldb）定位，属独立工程（见[「留提示」变体](#留提示变体--variant-keeptip)末尾）。issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038) 中 wuliyc 报告过在 4.1.11 上的同类效果（未说明群/私聊范围）。
+
+> **build 270416（4.2.0）例外**：该版本群聊里他人的撤回提示已验证正常。为避免 Mac 上本人撤回出现两条相同提示，`keeptip` 在解析收尾处检查撤回 XML：匹配「你撤回／你收回／你回收」或 `You recalled` 时保留真实 `newmsgid`，由微信原生删除本人撤回的消息；其他撤回仍清零 `newmsgid`，维持防撤回和提示。此次本人撤回条件补丁已完成静态字节核对，实机验证待完成。
 >
 > **微信 4.x 多开用 `wechattweak clone`**（[#11](https://github.com/zengtianli/WeChatTweak/issues/11)）：
 >
@@ -85,6 +87,7 @@
 
 | 构建号 | 微信版本 | 防撤回 | 阻止自动更新 |
 | --- | --- | :---: | :---: |
+| 270416 | 4.2.0，arm64 | `keeptip` 对本人撤回保留真实 ID 并按微信原生处理；其他人仍清零 ID 保留消息和提示。本人撤回修复尚待实机复测 | 本地配置收录 8 个更新点；是否适用取决于安装渠道 |
 | 270135 | 4.1.15.55 官网版，arm64 + Intel | 两架构原始字节、独立 dylib 写入/幂等/逐字节还原通过；真实聊天和 Intel 真机未测。Intel 仅 keeptip | 两架构各 8 个方法已核对并在独立 dylib 上写入；本构建整包重签未复验 |
 | 270134 | 4.1.15.54 官网版，arm64 + Intel（见下） | ✓（官方安装包副本在开启 SIP 的 Mac 上已验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后 11 处补丁点与原包逐字节一致；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 270115 | 4.1.15.35 App Store 版，arm64 | ✓（贡献者用 `tools/locate_revoke.py` 在 App Store 原版上定位（第三代签名），反汇编核对 `cbz w0` / `str x0,[x19,#0x1c8]`；副本上在开启 SIP 的 Mac 上验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后两处补丁点恢复原始指令；keeptip 已由两位贡献者在各自的 App Store 安装上经真实聊天撤回实测（第二台机器独立复现样本哈希与补丁点，见 PR #9），silent 的真实聊天效果未实测；Intel 未验证） | 不适用：App Store 版没有微信内置更新器（无 `XAppUpdateManager`），`patch` 自动跳过；想保住补丁请在 App Store 设置里关闭自动更新 |
@@ -269,7 +272,7 @@ wechattweak patch
 >
 > **群聊为什么没提示**：整个 revoke 模块（`0x48a0140..0x48ad700`）里写 newmsgid 字段 `[x19,#0x168]` 的只有 `0x48a0b44` 一处，私聊群聊共用它。私聊的提示插入不依赖 newmsgid、照出；群聊的提示渲染依赖 newmsgid（决定挂在哪条下面），被我们清零后连带失效 → 群聊静默。这个下游消费者经虚派发/chained-fixup 分发，纯字节补丁静态定位不到独立的「群聊提示」点。
 >
-> **注意：运行时注入（fzlzjerry `--runtime-tip`）也解决不了群聊。** 读其 `Runtime.mm` 源码确认：它的 hook 只在解析后**改写 replaceMsg 提示文本**、仍把 newmsgid 清零，靠微信**原生**代码插入提示——全程无任何独立插入调用（零 objc_msgSend/selector）。它落在和本字节补丁相同的 newmsgid=0 状态，群聊原生插入同样不触发。**真正的解法**是保留真 newmsgid（让原生提示对群/私都插入并锚定），转而在下游 NOP 掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需 lldb 动态定位（触发一次真群聊撤回、断在 WCDB 删除原语看 backtrace），属需实机配合的独立工程，本 fork 暂未纳入。
+> **针对 build 269136：运行时注入（fzlzjerry `--runtime-tip`）也解决不了群聊。** 读其 `Runtime.mm` 源码确认：它的 hook 只在解析后**改写 replaceMsg 提示文本**、仍把 newmsgid 清零，靠微信**原生**代码插入提示——全程无任何独立插入调用（零 objc_msgSend/selector）。它落在和本字节补丁相同的 newmsgid=0 状态，群聊原生插入同样不触发。对该构建，**真正的解法**是保留真 newmsgid（让原生提示对群/私都插入并锚定），转而在下游 NOP 掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需 lldb 动态定位（触发一次真群聊撤回、断在 WCDB 删除原语看 backtrace）。此结论不适用于 270416；270416 的群聊行为和条件补丁见上文。
 
 ## 新增一个版本
 
