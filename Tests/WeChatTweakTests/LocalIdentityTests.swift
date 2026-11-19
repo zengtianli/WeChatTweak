@@ -73,6 +73,55 @@ final class LocalIdentityTests: XCTestCase {
         let verify = LocalIdentity.capture("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
         XCTAssertEqual(verify.status, 0, verify.output)
     }
+
+    /// A keychain this run cannot read may still hold the identity the user's privacy grants are
+    /// bound to: it is moved aside, never deleted, before a new identity is made.
+    func testUnreadableKeychainIsMovedAsideNotDeleted() throws {
+        let dir = base.appendingPathComponent("signing", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        try Data("not a keychain".utf8).write(to: dir.appendingPathComponent("signing.keychain-db"))
+        XCTAssertNil(LocalIdentity.existing())
+        let made = try LocalIdentity.ensure()
+        XCTAssertEqual(made.keychain.path, dir.appendingPathComponent("signing.keychain-db").path)
+        let aside = try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .filter { $0.hasPrefix("signing.keychain-db.unreadable-") }
+        XCTAssertEqual(aside.count, 1, "the unreadable keychain is kept next to the new one")
+        XCTAssertEqual(try Data(contentsOf: dir.appendingPathComponent(aside[0])), Data("not a keychain".utf8))
+    }
+
+    /// Not root: the identity lives under the home Foundation reports (follows CFFIXED_USER_HOME),
+    /// not the password database's — a sandboxed or redirected home must not reach the real one.
+    func testNonRootUserHomeIsFoundationHome() throws {
+        try XCTSkipIf(getuid() == 0, "root resolves SUDO_USER / console user")
+        let user = try XCTUnwrap(LocalIdentity.realUser())
+        XCTAssertEqual(user.home.path, URL(fileURLWithPath: NSHomeDirectory()).path)
+        XCTAssertEqual(user.uid, getuid())
+    }
+}
+
+/// The build number comes straight from Info.plist: no AppleScript, Apple Events or GUI session
+/// (upstream's `do shell script "defaults read …"` failed with -600 over SSH and in sandboxes).
+final class VersionReadTests: XCTestCase {
+    func testVersionReadsInfoPlistDirectly() async throws {
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent("wt-version-\(UUID().uuidString)/WeChat.app", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: app.deletingLastPathComponent()) }
+        try FileManager.default.createDirectory(at: app.appendingPathComponent("Contents"), withIntermediateDirectories: true)
+        try PropertyListSerialization.data(fromPropertyList: ["CFBundleVersion": "270102"], format: .xml, options: 0)
+            .write(to: app.appendingPathComponent("Contents/Info.plist"))
+        let version = try await Command.version(app: app)
+        XCTAssertEqual(version, "270102")
+        XCTAssertEqual(version, Command.buildNumber(app: app))
+    }
+
+    func testMissingInfoPlistThrows() async throws {
+        let app = FileManager.default.temporaryDirectory.appendingPathComponent("wt-version-missing-\(UUID().uuidString)/WeChat.app")
+        do {
+            _ = try await Command.version(app: app)
+            XCTFail("a bundle without Info.plist has no version")
+        } catch {
+            XCTAssertTrue(error.localizedDescription.contains("Info.plist"), error.localizedDescription)
+        }
+    }
 }
 
 /// The post-sign gate must tell a binary macOS would refuse from one it accepts, without

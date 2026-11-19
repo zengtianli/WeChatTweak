@@ -41,14 +41,17 @@ struct LocalIdentity {
 
     /// The human user this run acts for. Under `sudo` that is SUDO_USER; under an
     /// AppleScript "with administrator privileges" (WeChatUnrevoke's admin path) there is no
-    /// SUDO_USER, so fall back to the console user.
+    /// SUDO_USER, so fall back to the console user. Not root: this process's own user, with
+    /// the home Foundation reports (NSHomeDirectory honours CFFIXED_USER_HOME, like every
+    /// other per-user path the app uses) rather than the password database's.
     static func realUser() -> (name: String, home: URL, uid: uid_t, gid: gid_t)? {
         var candidates: [String] = []
         if getuid() == 0 {
             if let s = ProcessInfo.processInfo.environment["SUDO_USER"], !s.isEmpty, s != "root" { candidates.append(s) }
             if let console = consoleUser() { candidates.append(console) }
         } else if let pw = getpwuid(getuid()) {
-            candidates.append(String(cString: pw.pointee.pw_name))
+            return (String(cString: pw.pointee.pw_name), URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true),
+                    pw.pointee.pw_uid, pw.pointee.pw_gid)
         }
         for name in candidates {
             guard let pw = getpwnam(name) else { continue }
@@ -89,8 +92,14 @@ struct LocalIdentity {
         let keychain = dir.appendingPathComponent("signing.keychain-db")
         let fm = FileManager.default
         try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        // A half-made keychain from an interrupted run would make create-keychain fail.
-        if fm.fileExists(atPath: keychain.path) { try? fm.removeItem(at: keychain) }
+        // A half-made keychain from an interrupted run would make create-keychain fail. It may
+        // also be a good one this run could not read (a locked or unreachable keychain): move it
+        // aside instead of deleting it, so the identity — and the privacy grants bound to it —
+        // can still be put back.
+        if fm.fileExists(atPath: keychain.path) {
+            let aside = dir.appendingPathComponent("signing.keychain-db.unreadable-\(Int(Date().timeIntervalSince1970))")
+            try? fm.moveItem(at: keychain, to: aside)
+        }
 
         let work = fm.temporaryDirectory.appendingPathComponent("wechattweak-identity-\(UUID().uuidString)", isDirectory: true)
         try fm.createDirectory(at: work, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])

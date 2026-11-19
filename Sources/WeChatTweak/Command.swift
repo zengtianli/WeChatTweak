@@ -9,7 +9,7 @@ import ArgumentParser
 
 struct Command {
     enum Error: @unchecked Sendable, LocalizedError {
-        case executing(command: String, error: NSDictionary)
+        case unreadableInfoPlist(path: String)
         case keeptipUnavailable(version: String)
         case revokeUnavailable(version: String)
         case nothingApplied([String])
@@ -17,8 +17,8 @@ struct Command {
 
         var errorDescription: String? {
             switch self {
-            case let .executing(command, error):
-                return "executing: \(command) error: \(error)"
+            case let .unreadableInfoPlist(path):
+                return "cannot read \(path): is this a WeChat.app bundle?"
             case let .keeptipUnavailable(version):
                 return """
                     config.json has no `revoke-keeptip` patch point for WeChat build \(version) yet.
@@ -120,12 +120,21 @@ struct Command {
         NSDictionary(contentsOf: app.appendingPathComponent("Contents/Info.plist"))?["CFBundleVersion"] as? String
     }
 
+    /// `CFBundleVersion` read straight from the bundle's Info.plist; throws when there is no
+    /// readable Info.plist. Upstream asked an AppleScript `do shell script "defaults read …"`
+    /// for it: that needs a GUI login session (LaunchServices check-in, Apple Events) and
+    /// failed with -600 "Application isn't running" over SSH, from a launchd job or in a
+    /// sandbox — the engine then could not even run `doctor`.
     static func version(app: URL) async throws -> String? {
-        try await Command.execute(command: "defaults read \(q(app.appendingPathComponent("Contents/Info.plist").path)) CFBundleVersion")
+        let plist = app.appendingPathComponent("Contents/Info.plist")
+        guard let info = NSDictionary(contentsOf: plist) else {
+            throw Error.unreadableInfoPlist(path: plist.path)
+        }
+        return info["CFBundleVersion"] as? String
     }
 
-    /// Shell-quote a path for the `do shell script` command line. Upstream interpolated
-    /// paths bare, so any `-a` path containing a space (e.g. a copy on an external
+    /// Shell-quote a path for a command line printed in advice (`chflags … <path>`). Upstream
+    /// interpolated paths bare, so any path containing a space (e.g. a copy on an external
     /// volume) split into two arguments.
     static func q(_ path: String) -> String {
         "'" + path.replacingOccurrences(of: "'", with: "'\\''") + "'"
@@ -462,30 +471,4 @@ struct Command {
         print("[resign] macOS will ask again the first time WeChat records the screen or uses the mic/camera.")
     }
 
-    @discardableResult
-    private static func execute(command: String) async throws -> String? {
-        // The command is embedded in an AppleScript string literal: escape backslashes
-        // and double quotes so the shell single-quoting above survives intact.
-        let literal = command
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        guard let script = NSAppleScript(source: "do shell script \"\(literal)\"") else {
-            throw Error.executing(
-                command: command,
-                error: ["error": "Create script failed."]
-            )
-        }
-
-        var error: NSDictionary?
-        let descriptor = script.executeAndReturnError(&error)
-
-        if let error = error {
-            throw Error.executing(
-                command: command,
-                error: error
-            )
-        } else {
-            return descriptor.stringValue
-        }
-    }
 }
