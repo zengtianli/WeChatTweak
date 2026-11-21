@@ -13,7 +13,7 @@
 > `Contents/Resources/wechat.dylib`. **This fork does**: it locates the 4.x patch points, verifies the original
 > bytes before writing anything, and re-signs the bundle **keeping its entitlements** (a bare
 > `codesign --deep --sign -` strips them, and WeChat then refuses to launch on any machine with SIP on).
-> Anti-recall + auto-updater block for selected WeChat builds through `270135` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
+> Anti-recall + auto-updater block for selected WeChat builds through `270390` (4.x patches: arm64; Intel for 270135 / 270134 / 270102).
 > Prefer a GUI? → **[Unrevoke](https://github.com/zengtianli/WeChatUnrevoke)**.
 
 ---
@@ -32,7 +32,7 @@
 > **本 fork 与上游的关系**：上游 [sunnyyoung/WeChatTweak](https://github.com/sunnyyoung/WeChatTweak)
 > （13.8k★、1.6k fork）**最后一次提交停在 2026 年 2 月**，而微信 4.x 把撤回逻辑整体搬进了
 > `Contents/Resources/wechat.dylib`，它知道的补丁点全部失效。本 fork 从 4.1.10（build 268880）接上，
-> 现已收录至 **build 270135（4.1.15.55）**（并非覆盖期间每一个构建号，4.x 补丁为 arm64），并且：
+> 现已收录多项构建，最高为 **build 270390（4.2.0.54）**，并且：
 >
 > - 支持**按目标 dylib** 打补丁（4.x 的逻辑不在主程序里了）
 > - **写入前校验原始字节** —— 打错版本直接报错，不会盲写把微信弄坏
@@ -41,10 +41,10 @@
 
 ## 功能
 
-| 功能 | 说明 | 微信 3.8.x | 微信 4.x（已收录构建，至 270135） |
+| 功能 | 说明 | 微信 3.8.x | 微信 4.x（已收录构建，至 270390） |
 | --- | --- | :---: | :---: |
 | **防撤回（静默变体）** | 别人撤回的消息原样留在聊天里，不弹提示 | ✓ | ✓（当前发布版） |
-| **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ⚠️（`--variant keeptip`：**私聊**有提示；**群聊**仍静默无提示） |
+| **防撤回（留提示变体）** | 消息留着 **且** 仍显示「对方撤回了一条消息」提示 | ✓ | ✓（`--variant keeptip`，私聊和群聊的验证结果见版本表） |
 | **阻止自动更新** | 拦住自动升级，避免升级把补丁还原（微信更新是整包替换，四次把补丁静默抹掉；`defaults write` 关不掉） | ✓ | ✓（`patch` 默认同时打；与防撤回相互独立，拦不住时照打防撤回并说明原因；`--no-block-update` 关） |
 | **客户端多开** | 同时登录多个账号 | ✓ | ✓（`wechattweak clone`：一条命令做出第二个微信，见下） |
 
@@ -54,7 +54,7 @@
 >
 > `keeptip` 变体在 **build 269136（4.1.11）实机实测**：**私聊**撤回后消息保留且显示提示；**群聊**撤回消息虽保留、但仍无提示（表现同静默变体）。根本矛盾：`newmsgid` 同时控制「删哪条消息」和「群聊提示插到哪条下面」——清零它虽保住了消息，却也让群聊提示的原生插入不再触发（私聊提示不依赖 newmsgid，故照出）。群聊要出提示，必须保留真 newmsgid、转而在下游掐掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需动态（lldb）定位，属独立工程（见[「留提示」变体](#留提示变体--variant-keeptip)末尾）。issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038) 中 wuliyc 报告过在 4.1.11 上的同类效果（未说明群/私聊范围）。
 >
-> **微信 4.x 多开用 `wechattweak clone`**（[#11](https://github.com/zengtianli/WeChatTweak/issues/11)）：
+> **用 `wechattweak clone` 创建独立数据的微信副本**（[#11](https://github.com/zengtianli/WeChatTweak/issues/11)）：
 >
 > ```sh
 > wechattweak clone                     # 从 /Applications/WeChat.app 做出 ~/Applications/WeChat2.app
@@ -69,7 +69,9 @@
 > - 副本首次用到截屏、麦克风、摄像头时要单独授权一次；默认用本机固定签名身份，重做副本后授权不失效。
 > - 已在 4.1.15.22（270102，官网版，arm64，SIP 关闭的机器）实测：副本与主微信同时运行、各自数据目录独立。SIP 开启的机器、真实登录后的长期使用仍待反馈。多开是否触发微信风控不在本工具可控范围内，风险自负。
 >
-> 另有一种按构建打补丁的旧做法，只收录了一个构建。**build 269602**：本仓库收录的 `multiInstance` 补丁会让单实例检查返回成功；该点已在同 bundle-id 的应用副本并行启动实验中验证。不要让两个实例共享同一账号的数据目录进行长期并发使用。
+> **微信 4.2.0.54（build 270390，Apple Silicon）同包多开**。退出微信，运行 `wechattweak patch`，再打开微信。运行 `open -n /Applications/WeChat.app` 从同一个 App 启动第二个实例。单实例检查补丁随两种防撤回模式应用，`wechattweak restore` 可还原。已在 SIP 开启的 Mac 上用隔离包验证，同一份 App 的两个进程都创建了窗口，并同时运行至少 30 秒。两个实例使用同一个 Bundle ID 和容器。两个已登录账号的长期并行使用仍待验证。
+>
+> **build 269602** 也有 `multiInstance` 补丁，已在同 Bundle ID 的应用副本并行启动实验中验证。
 
 > **build 269602 同时支持两个防撤回变体**，但二者的静默点不同：`silent` 使用 EchoXml 复核的 `revokemsg` 分类函数 8 字节返回桩；`keeptip` 会先还原这个分类函数，再使用同一 arm64 切片中已验证的 `parseRevokeXML` 几何签名（保留 `cbz`，并把 `newmsgid` 写入改为 0）。两组原始字节均在官方 269602 arm64 切片（SHA-256 `413c1246…a4b70568abd6`）核对；真实聊天撤回仍应自行实测。
 
@@ -79,12 +81,13 @@
 
 2026-10-21：源码补丁库新增 **4.1.15.55 / 270135**，覆盖 arm64 与 x86_64。官方安装包 SHA256 为 `ceea355d5c93419658f777fdd1010f9b19d14fab6dc552af9c208cddad7f248f`；这是配置更新，不是 GUI 新版。下文旧构建的实测仍属历史证据。**34888 / 4.1.7.57** 尚未支持：逻辑位于主程序，三代定位签名均未命中。重新编译同一份补丁库不会增加支持。
 
-当前适配以**微信官网最新稳定版**为准。2026-10-10 核对官网安装包为 **4.1.15.54（build 270134）**，已提供 Apple Silicon（arm64）补丁；同为 4.1.15 的 270102（4.1.15.22）与 270100 也已收录。4.1.15 先后发过多个构建，界面上都显示 4.1.15，补丁地址各不相同，以构建号为准。4.1.15 的 App Store 版 270115（4.1.15.35）也已收录（arm64）；4.1.13 的 269631（官网版）与 269602（App Store 版）也已收录；其他未收录构建建议从[微信官网](https://mac.weixin.qq.com/)更新到这版，再重新打补丁。官网版和 App Store 版即使都显示 4.1.13，也必须分别核对构建号，不能互套地址。
+官网版和 App Store 版的补丁都以各自的构建号为准。下载或更新微信前，请查阅下表确认目标构建已收录。
 
 270100 的定位样本是 2026-09-24 从[官网下载地址](https://dldir1.qq.com/weixin/Universal/Mac/WeChatMac.dmg)取得的安装包（2026-09-18 发布），SHA-256 为 `b73319ea3ef7f5f2f6f1403b0bed87ac75b5f5b70f0951ea61bad2d9449857f8`。269631 的定位样本来自[腾讯官方安装包](https://dldir1.qq.com/weixin/Universal/Mac/xWeChatMac_universal_4.1.13.63_269631.dmg)，SHA-256 为 `b247b2cc9dd2122024d6facf9f3c464f2564f106266851d439853bacc7013de9`。270134 的定位样本是 2026-10-10 从腾讯官方地址 `https://dldir1.qq.com/weixin/Universal/Mac/xWeChatMac_universal_4.1.15.54_270134.dmg` 取得的安装包，SHA-256 为 `a51d3f1bc7f47f204865270659806ed32fbb0ff3acade9b8952d4d403682a0b9`；270102 的样本是 `xWeChatMac_universal_4.1.15.22_270102.dmg`，SHA-256 为 `d87de447a43cd2d59aef441d3a8b32aad255427289581afcffc90aee0735dfc2`。270115 的定位样本是 2026-10-15 从 [Mac App Store](https://apps.apple.com/cn/app/id836500024)（中国区，App ID `836500024`）安装的 4.1.15（`CFBundleVersion` 270115），App Store 只提供当前版本，无法按构建号下载历史版本，核对前请先用 `wechattweak versions` 确认构建号；样本为打补丁前自动留存的 `wechat.dylib.270115.bak`（Apple Mac OS Application Signing 签名，Team ID `5A4RE8SF68`），整份 universal dylib 的 SHA-256 为 `960222a9872c89a8ce14567427f2bb3e715435adbbd8723465ff7c253bb8fb30`，其中原始 arm64 切片（`lipo -thin arm64`，fat 偏移 `181452800`，长 `169368160` 字节）的 SHA-256 为 `6d3feb56043cb63d2ff3f77aa32115abbfe7a2f28b3ab1ab59886ee625703e4b`。使用 GUI 的用户联网退出并重开 WeChatUnrevoke 即可刷新补丁库，无需为此次配置更新重新安装 GUI。微信升级会清除补丁，升级后仍需重新开启并检查保护。
 
 | 构建号 | 微信版本 | 防撤回 | 阻止自动更新 |
 | --- | --- | :---: | :---: |
+| 270390 | 4.2.0.54 官网版，arm64 | 在副本上验证了静默、留提示、双向切换、严格签名校验和还原。真实聊天撤回待实测 | 8 处位置已核对，写入后体检通过 |
 | 270135 | 4.1.15.55 官网版，arm64 + Intel | 两架构原始字节、独立 dylib 写入/幂等/逐字节还原通过；真实聊天和 Intel 真机未测。Intel 仅 keeptip | 两架构各 8 个方法已核对并在独立 dylib 上写入；本构建整包重签未复验 |
 | 270134 | 4.1.15.54 官网版，arm64 + Intel（见下） | ✓（官方安装包副本在开启 SIP 的 Mac 上已验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后 11 处补丁点与原包逐字节一致；真实聊天撤回待用户实测） | ✓（8 处原始字节已核对，写入后体检通过） |
 | 270115 | 4.1.15.35 App Store 版，arm64 | ✓（贡献者用 `tools/locate_revoke.py` 在 App Store 原版上定位（第三代签名），反汇编核对 `cbz w0` / `str x0,[x19,#0x1c8]`；副本上在开启 SIP 的 Mac 上验证 keeptip 与 silent 写入、体检、严格签名校验和还原，还原后两处补丁点恢复原始指令；keeptip 已由两位贡献者在各自的 App Store 安装上经真实聊天撤回实测（第二台机器独立复现样本哈希与补丁点，见 PR #9），silent 的真实聊天效果未实测；Intel 未验证） | 不适用：App Store 版没有微信内置更新器（无 `XAppUpdateManager`），`patch` 自动跳过；想保住补丁请在 App Store 设置里关闭自动更新 |
