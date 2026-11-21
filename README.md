@@ -54,7 +54,7 @@
 >
 > `keeptip` 变体在 **build 269136（4.1.11）实机实测**：**私聊**撤回后消息保留且显示提示；**群聊**撤回消息虽保留、但仍无提示（表现同静默变体）。根本矛盾：`newmsgid` 同时控制「删哪条消息」和「群聊提示插到哪条下面」——清零它虽保住了消息，却也让群聊提示的原生插入不再触发（私聊提示不依赖 newmsgid，故照出）。群聊要出提示，必须保留真 newmsgid、转而在下游掐掉那次删除调用；该删除调用经虚派发分发、静态定位不到，需动态（lldb）定位，属独立工程（见[「留提示」变体](#留提示变体--variant-keeptip)末尾）。issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038) 中 wuliyc 报告过在 4.1.11 上的同类效果（未说明群/私聊范围）。
 >
-> **微信 4.x 多开用 `wechattweak clone`**（[#11](https://github.com/zengtianli/WeChatTweak/issues/11)）：
+> **用 `wechattweak clone` 创建独立数据的微信副本**（[#11](https://github.com/zengtianli/WeChatTweak/issues/11)）：
 >
 > ```sh
 > wechattweak clone                     # 从 /Applications/WeChat.app 做出 ~/Applications/WeChat2.app
@@ -69,7 +69,9 @@
 > - 副本首次用到截屏、麦克风、摄像头时要单独授权一次；默认用本机固定签名身份，重做副本后授权不失效。
 > - 已在 4.1.15.22（270102，官网版，arm64，SIP 关闭的机器）实测：副本与主微信同时运行、各自数据目录独立。SIP 开启的机器、真实登录后的长期使用仍待反馈。多开是否触发微信风控不在本工具可控范围内，风险自负。
 >
-> 另有一种按构建打补丁的旧做法，只收录了一个构建。**build 269602**：本仓库收录的 `multiInstance` 补丁会让单实例检查返回成功；该点已在同 bundle-id 的应用副本并行启动实验中验证。不要让两个实例共享同一账号的数据目录进行长期并发使用。
+> **微信 4.2.0.54（build 270390，Apple Silicon）同包多开**。退出微信，运行 `wechattweak patch`，再打开微信。运行 `open -n /Applications/WeChat.app` 从同一个 App 启动第二个实例。单实例检查补丁随两种防撤回模式应用，`wechattweak restore` 可还原。已在 SIP 开启的 Mac 上用隔离包验证，同一份 App 的两个进程都创建了窗口，并同时运行至少 30 秒。两个实例使用同一个 Bundle ID 和容器。两个已登录账号的长期并行使用仍待验证。
+>
+> **build 269602** 也有 `multiInstance` 补丁，已在同 Bundle ID 的应用副本并行启动实验中验证。
 
 > **build 269602 同时支持两个防撤回变体**，但二者的静默点不同：`silent` 使用 EchoXml 复核的 `revokemsg` 分类函数 8 字节返回桩；`keeptip` 会先还原这个分类函数，再使用同一 arm64 切片中已验证的 `parseRevokeXML` 几何签名（保留 `cbz`，并把 `newmsgid` 写入改为 0）。两组原始字节均在官方 269602 arm64 切片（SHA-256 `413c1246…a4b70568abd6`）核对；真实聊天撤回仍应自行实测。
 

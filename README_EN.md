@@ -54,7 +54,7 @@ and uses this repository's `config.json` patch database (so the installed app ca
 >
 > The `keeptip` variant was **tested on a real device with build 269136 (4.1.11)**: recalled messages remain with notices in **private chats**; in **group chats**, messages remain but there is still no notice (the same behavior as the silent variant). The underlying conflict is that `newmsgid` controls both “which message to delete” and “which message the group-chat notice appears below.” Zeroing it preserves the message but prevents native group-notice insertion (private-chat notices do not depend on newmsgid). Group notices require preserving the real newmsgid and blocking the downstream deletion call instead. That call uses virtual dispatch and cannot be located statically; finding it dynamically with lldb is a separate engineering task (see the end of the [keep-notice variant](#留提示变体--variant-keeptip) section). In issue [#1038](https://github.com/sunnyyoung/WeChatTweak/issues/1038), wuliyc reported similar behavior on 4.1.11 without specifying whether it concerned private or group chats.
 >
-> **On WeChat 4.x, use `wechattweak clone`** ([#11](https://github.com/zengtianli/WeChatTweak/issues/11)):
+> **Use `wechattweak clone` to make a WeChat copy with its own data** ([#11](https://github.com/zengtianli/WeChatTweak/issues/11)).
 >
 > ```sh
 > wechattweak clone                     # /Applications/WeChat.app → ~/Applications/WeChat2.app
@@ -69,7 +69,9 @@ and uses this repository's `config.json` patch database (so the installed app ca
 > - The copy asks for Screen Recording, Microphone and Camera once on first use; it is signed with this Mac's fixed identity by default, so the grants survive a rebuild.
 > - Verified on 4.1.15.22 (270102, direct download, arm64, a Mac with SIP disabled): the copy and the first WeChat run side by side with separate data directories. SIP-enabled Macs and long-term use after a real login still need feedback. Whether running several accounts triggers WeChat's risk control is outside this tool's control; use at your own risk.
 >
-> The older per-build byte patch remains for one build only.
+> **Launch multiple instances from one app on WeChat 4.2.0.54 (build 270390, Apple Silicon).** Quit WeChat and run `wechattweak patch`, open WeChat, then run `open -n /Applications/WeChat.app` to start the second instance. Both anti-recall variants apply the single-instance patch. `wechattweak restore` restores the original check. On a Mac with SIP enabled, two processes from the same isolated app bundle created windows and stayed running together for at least 30 seconds. The instances use the same bundle identifier and container. Long-running use with two signed-in accounts still needs testing.
+>
+> **Build 269602** also has a `multiInstance` patch, verified by running copies with the same bundle identifier in parallel.
 
 ## Supported versions
 
