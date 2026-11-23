@@ -186,6 +186,20 @@ struct LocalIdentity {
         _ = capture("/usr/bin/security", ["list-keychains", "-d", "user", "-s"] + list)
     }
 
+    /// Runs `body` with this keychain temporarily on the signing user's search list.
+    /// On some macOS versions `codesign --keychain <file> --sign <hash>` still answers
+    /// "The specified item could not be found in the keychain" when that file is not on the
+    /// search list, although `security find-identity` lists the identity in it
+    /// (WeChatUnrevoke #1, macOS 14.8.5 Intel). The list is put back afterwards.
+    func onSearchList<T>(_ body: () throws -> T) rethrows -> T {
+        let before = LocalIdentity.searchList()
+        if let before, !before.contains(keychain.path) {
+            _ = LocalIdentity.capture("/usr/bin/security", ["list-keychains", "-d", "user", "-s", keychain.path] + before)
+        }
+        defer { if let before { LocalIdentity.restoreSearchList(before) } }
+        return try body()
+    }
+
     // MARK: - Process
 
     private static func step(_ what: String, _ exe: String, _ args: [String]) throws {

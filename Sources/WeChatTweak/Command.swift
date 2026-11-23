@@ -409,7 +409,7 @@ struct Command {
             }
         }
         print("[resign] signing as \(Resigner.identity.map { "this Mac's identity \($0.sha1.prefix(8))…" } ?? "ad-hoc")")
-        try Resigner.resign(app: app, patchedBinaries: nested)
+        try signWithFallback(app: app, nested: nested)
         if Resigner.identity != nil {
             // Never leave WeChat signed in a way the system would refuse to start.
             let refused = LaunchProbe.refusals(in: app)
@@ -426,6 +426,33 @@ struct Command {
         if resetGrants, let after, after != before {
             resetPrivacyGrants(app: app)
         }
+    }
+
+    /// The patch bytes are already written when signing starts, so a signing failure must not
+    /// leave WeChat half-signed. With this Mac's identity: try as is; if codesign fails, retry
+    /// with the identity's keychain on the search list; if that fails too, sign ad-hoc (works
+    /// everywhere; only the privacy grants then have to be given again). Ad-hoc errors propagate.
+    static func signWithFallback(app: URL, nested: [URL]) throws {
+        guard let identity = Resigner.identity else {
+            try Resigner.resign(app: app, patchedBinaries: nested)
+            return
+        }
+        do {
+            try Resigner.resign(app: app, patchedBinaries: nested)
+            return
+        } catch {
+            print("[resign] signing with this Mac's identity failed: \(error.localizedDescription)")
+        }
+        do {
+            print("[resign] retrying with its keychain on the search list")
+            try identity.onSearchList { try Resigner.resign(app: app, patchedBinaries: nested) }
+            return
+        } catch {
+            print("[resign] still failed: \(error.localizedDescription)")
+        }
+        print("[resign] falling back to ad-hoc (privacy grants will have to be given again after every patch)")
+        Resigner.identity = nil
+        try Resigner.resign(app: app, patchedBinaries: nested)
     }
 
     /// `designated => …` of the bundle, nil when unreadable.

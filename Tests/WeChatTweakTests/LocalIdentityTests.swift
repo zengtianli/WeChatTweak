@@ -74,6 +74,26 @@ final class LocalIdentityTests: XCTestCase {
         XCTAssertEqual(verify.status, 0, verify.output)
     }
 
+    /// WeChatUnrevoke #1 (macOS 14.8.5, Intel): `security find-identity` listed the identity, then
+    /// `codesign --keychain … --sign <hash>` answered "The specified item could not be found in the
+    /// keychain" and patching stopped with the bytes already written. Signing must still finish:
+    /// retry with the keychain on the search list, then ad-hoc; the search list is left as it was.
+    func testIdentityCodesignCannotUseFallsBackToAdhoc() async throws {
+        let app = try makeApp()
+        let real = try LocalIdentity.ensure()
+        let listBefore = LocalIdentity.capture("/usr/bin/security", ["list-keychains", "-d", "user"]).output
+        Resigner.identity = LocalIdentity(sha1: String(repeating: "0", count: 40), keychain: real.keychain)
+        let nested = [app.appendingPathComponent("Contents/Resources/payload.bin")]
+        try Command.signWithFallback(app: app, nested: nested)
+        XCTAssertNil(Resigner.identity, "fell back to ad-hoc")
+        let requirement = try XCTUnwrap(Command.designatedRequirement(of: app))
+        XCTAssertTrue(requirement.contains("cdhash"), requirement)
+        let verify = LocalIdentity.capture("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+        XCTAssertEqual(verify.status, 0, verify.output)
+        XCTAssertEqual(LocalIdentity.capture("/usr/bin/security", ["list-keychains", "-d", "user"]).output, listBefore,
+                       "the retry puts the search list back")
+    }
+
     /// A keychain this run cannot read may still hold the identity the user's privacy grants are
     /// bound to: it is moved aside, never deleted, before a new identity is made.
     func testUnreadableKeychainIsMovedAsideNotDeleted() throws {
