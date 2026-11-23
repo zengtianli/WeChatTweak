@@ -107,6 +107,120 @@
     ]
   },
   {
+    "version": "270390",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "461413c",
+            "expected": "40100034",
+            "asm": "82000014"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4614904",
+            "expected": [
+              "60E600F9",
+              "7FE600F9"
+            ],
+            "asm": "60E600F9"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "461413c",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4614904",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "2827c8",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2849ec",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "284cbc",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2850dc",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f91c",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f924",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f92c",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f934",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          }
+        ]
+      },
+      {
+        "identifier": "multiInstance",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "27b798",
+            "expected": "FF0306D1FC6F14A9",
+            "asm": "20008052C0035FD6"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.54 installer, arm64 wechat.dylib SHA-256 9beeba8587f6b342a459e7e583d662859da2a701268787967f849f17dfc00596. Patch points from fzlzjerry/wechat-antirecall patches.json (a6a034df87e967f885cc7cafe42fe98f10f6f8a3), verified against the local unmodified dylib. The silent variant restores the original newmsgid store when switching from keeptip. The multiInstance entry is the single-instance predicate located via runningApplicationsWithBundleIdentifier: and confirmed at its startup caller."
+  },
+  {
     "version": "270135",
     "targets": [
       {
