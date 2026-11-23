@@ -11,6 +11,34 @@
             "addr": "4666e98",
             "expected": "40100034",
             "asm": "82000014"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4667638",
+            "expected": [
+              "60E600F9",
+              "7FE600F9"
+            ],
+            "asm": "60E600F9"
+          },
+          {
+            "arch": "arm64",
+            "addr": "46676fc",
+            "expected": [
+              "93020052",
+              "FFB44814"
+            ],
+            "asm": "93020052"
+          },
+          {
+            "arch": "arm64",
+            "addr": "5894af8",
+            "expected": [
+              "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "A85EC0398800F837EA0315AAAB5E403903000014AA0240F9AB0640F94C010B8BED030AAA89010DCB3F2500F123090054A80140391F910371A00000541F65017120060054AD050091F7FFFF17A80540391FF5027181FFFF54A80940391F81027121FFFF54A8314078C95C92521F01096B80020054C99C92521F01096BA0020054A97C93521F01096BE1FDFF54A81540391F79027181FDFF54A81940391F99037121FDFF54A81D40391F510271C1FCFF54A82140391FD90271A0040054E2FFFF17A81540391F910271E1FBFF5404000014A81540391FD9027161FBFF54A81940391F95037101FBFF54A81D40391F6D0271A1FAFF54A82140391F79027180020054D1FFFF173F3100F1E3F9FF54A80140B929EB8D52A90EA4721F01096B41F9FF54A80540B949AE8C52692CAC721F01096BA1F8FF54A80940B9898D8D52A98CAC721F01096B40000054BFFFFF17020000147FE600F993020052AC4AB717",
+              "A85EC0398800F837EA0315AAAB5E403903000014AA0240F9AB0640F94C010B8BED030AAA89010DCB3F2500F123090054A80140391F910371A00000541F65017120060054AD050091F7FFFF17A80540391FF5027181FFFF54A80940391F81027121FFFF54A8314078C95C92521F01096B80020054C99C92521F01096BA0020054A97C93521F01096BE1FDFF54A81540391F79027181FDFF54A81940391F99037121FDFF54A81D40391F510271C1FCFF54A82140391FD90271A0040054E2FFFF17A81540391F910271E1FBFF5404000014A81540391FD9027161FBFF54A81940391F95037101FBFF54A81D40391F6D0271A1FAFF54A82140391F79027180020054D1FFFF173F3100F1E3F9FF54A80140B929AB8E52E90DA4721F01096B41F9FF54A80540B949AE8C52692CAC721F01096BA1F8FF54A80940B9898D8D52A98CAC721F01096B40000054BFFFFF17020000147FE600F993020052AC4AB717"
+            ],
+            "asm": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
           }
         ]
       },
@@ -45,8 +73,11 @@
           {
             "arch": "arm64",
             "addr": "5894af8",
-            "expected": "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
-            "asm": "A85EC0398800F837EA0315AAAB5E403903000014AA0240F9AB0640F94C010B8BED030AAA89010DCB3F2500F123090054A80140391F910371A00000541F65017120060054AD050091F7FFFF17A80540391FF5027181FFFF54A80940391F81027121FFFF54A8314078C95C92521F01096B80020054C99C92521F01096BA0020054A97C93521F01096BE1FDFF54A81540391F79027181FDFF54A81940391F99037121FDFF54A81D40391F510271C1FCFF54A82140391FD90271A0040054E2FFFF17A81540391F910271E1FBFF5404000014A81540391FD9027161FBFF54A81940391F95037101FBFF54A81D40391F6D0271A1FAFF54A82140391F79027180020054D1FFFF173F3100F1E3F9FF54A80140B929AB8E52E90DA4721F01096B41F9FF54A80540B949AE8C52692CAC721F01096BA1F8FF54A80940B9898D8D52A98CAC721F01096B40000054BFFFFF17020000147FE600F993020052AC4AB717"
+            "expected": [
+              "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000",
+              "A85EC0398800F837EA0315AAAB5E403903000014AA0240F9AB0640F94C010B8BED030AAA89010DCB3F2500F123090054A80140391F910371A00000541F65017120060054AD050091F7FFFF17A80540391FF5027181FFFF54A80940391F81027121FFFF54A8314078C95C92521F01096B80020054C99C92521F01096BA0020054A97C93521F01096BE1FDFF54A81540391F79027181FDFF54A81940391F99037121FDFF54A81D40391F510271C1FCFF54A82140391FD90271A0040054E2FFFF17A81540391F910271E1FBFF5404000014A81540391FD9027161FBFF54A81940391F95037101FBFF54A81D40391F6D0271A1FAFF54A82140391F79027180020054D1FFFF173F3100F1E3F9FF54A80140B929AB8E52E90DA4721F01096B41F9FF54A80540B949AE8C52692CAC721F01096BA1F8FF54A80940B9898D8D52A98CAC721F01096B40000054BFFFFF17020000147FE600F993020052AC4AB717"
+            ],
+            "asm": "A85EC0398800F837EA0315AAAB5E403903000014AA0240F9AB0640F94C010B8BED030AAA89010DCB3F2500F123090054A80140391F910371A00000541F65017120060054AD050091F7FFFF17A80540391FF5027181FFFF54A80940391F81027121FFFF54A8314078C95C92521F01096B80020054C99C92521F01096BA0020054A97C93521F01096BE1FDFF54A81540391F79027181FDFF54A81940391F99037121FDFF54A81D40391F510271C1FCFF54A82140391FD90271A0040054E2FFFF17A81540391F910271E1FBFF5404000014A81540391FD9027161FBFF54A81940391F95037101FBFF54A81D40391F6D0271A1FAFF54A82140391F79027180020054D1FFFF173F3100F1E3F9FF54A80140B929EB8D52A90EA4721F01096B41F9FF54A80540B949AE8C52692CAC721F01096BA1F8FF54A80940B9898D8D52A98CAC721F01096B40000054BFFFFF17020000147FE600F993020052AC4AB717"
           }
         ]
       },
@@ -104,7 +135,8 @@
           }
         ]
       }
-    ]
+    ],
+    "source": "Contributed in PR #12 (verified by the contributor on a real 270416 Apple Silicon install; the installer is not publicly archived). keeptip branches from 0x46676fc to a 348-byte code cave at 0x5894af8 (source: tools/patches/wechat-270416-keeptip-self-recall.s) that keeps the real newmsgid for self recalls (你撤回/你收回/你回收/You recalled) and zeroes it otherwise. The English marker compare was fixed after merge (\"You \" = 0x20756f59) and checked by emulating the cave on recall XML; the earlier cave bytes are still accepted so restore and re-patching work on installs patched from the PR branch. The silent variant puts the newmsgid store, hook and cave back to pristine."
   },
   {
     "version": "270390",
@@ -148,6 +180,12 @@
             "addr": "4614904",
             "expected": "60E600F9",
             "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "4dd216c",
+            "expected": "E8CF52ECFF",
+            "asm": "31C0909090"
           }
         ]
       },
@@ -202,6 +240,54 @@
             "addr": "28f934",
             "expected": "02640039",
             "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c9950",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cbfd0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cc2f0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cc750",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e70",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e80",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e90",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7ea0",
+            "expected": "554889E5",
+            "asm": "C3909090"
           }
         ]
       },
@@ -218,7 +304,742 @@
         ]
       }
     ],
-    "source": "Official 4.2.0.54 installer, arm64 wechat.dylib SHA-256 9beeba8587f6b342a459e7e583d662859da2a701268787967f849f17dfc00596. Patch points from fzlzjerry/wechat-antirecall patches.json (a6a034df87e967f885cc7cafe42fe98f10f6f8a3), verified against the local unmodified dylib. The silent variant restores the original newmsgid store when switching from keeptip. The multiInstance entry is the single-instance predicate located via runningApplicationsWithBundleIdentifier: and confirmed at its startup caller."
+    "source": "Official 4.2.0.54 installer, arm64 wechat.dylib SHA-256 9beeba8587f6b342a459e7e583d662859da2a701268787967f849f17dfc00596. Patch points from fzlzjerry/wechat-antirecall patches.json (a6a034df87e967f885cc7cafe42fe98f10f6f8a3), verified against the local unmodified dylib. The silent variant restores the original newmsgid store when switching from keeptip. The multiInstance entry is the single-instance predicate located via runningApplicationsWithBundleIdentifier: and confirmed at its startup caller. x86_64 keeptip and updater entries added from the official installer (dmg SHA-256 04933657d5c3a3445bd7c07859a7a9b7e6f3437c2e19b5df6984e3179c25b6ca) with the same method as 270388."
+  },
+  {
+    "version": "270388",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4614518",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4614518",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4614ce0",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "4dd25dc",
+            "expected": "E8CF52ECFF",
+            "asm": "31C0909090"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "2827c8",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2849ec",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "284cbc",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2850dc",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f91c",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f924",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f92c",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "28f934",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2c9950",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cbfd0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cc2f0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2cc750",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e70",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e80",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7e90",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7ea0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.52 installer (Tencent Developer ID, team 5A4RE8SF68), archived by zsbai/wechat-versions; dmg SHA-256 2051a085e86345846e42d8ff218b08589f9f87f5db27acfd2e51d4989d5e07bd, arm64 wechat.dylib slice SHA-256 386097b0874b1cf89f888ad5e10a5cd69a162f0c1f67db3906f20f8764d46a2a. arm64 revoke points located with tools/locate_revoke.py (4.2.0 delta 0x7c8 generation) and updater with tools/locate_update.py. x86_64 keeptip: the newmsgid conversion call 0x54 after `movabs rax,\"newmsgid\"`, followed by the store to +0x1c8 (same shape as 270102/270135); x86_64 updater methods resolved by ObjC names. Static checks plus patch/switch/restore and strict signature verification on a copy of the installer; no real-chat or Intel hardware test."
+  },
+  {
+    "version": "270353",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7d404",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7d404",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4e7dba4",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "56912dd",
+            "expected": "E8DE3DE9FF",
+            "asm": "31C0909090"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "291de4",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "293f1c",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2941e0",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2945c0",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e92c",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e934",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e93c",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e944",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d4fc0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7790",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7b00",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7fb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ea0",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3eb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ec0",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ed0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.17 installer (Tencent Developer ID, team 5A4RE8SF68), archived by zsbai/wechat-versions; dmg SHA-256 e47d5e1c1109b271cc8f97ae6bb9fa6726eb768c4eb9ee604bac79d552a3b124, arm64 wechat.dylib slice SHA-256 ad6ce62a44444eea668aeadbbbf2dceab75b36de4d05d35185e4aac12d9a6722. arm64 revoke points located with tools/locate_revoke.py (4.1.13 delta 0x7a0 generation) and updater with tools/locate_update.py. x86_64 keeptip: the newmsgid conversion call 0x54 after `movabs rax,\"newmsgid\"`, followed by the store to +0x1c8 (same shape as 270102/270135); x86_64 updater methods resolved by ObjC names. Static checks plus patch/switch/restore and strict signature verification on a copy of the installer; no real-chat or Intel hardware test."
+  },
+  {
+    "version": "270352",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7d74c",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7d74c",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4e7deec",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "569072d",
+            "expected": "E8DE3DE9FF",
+            "asm": "31C0909090"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "292de4",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "294f1c",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2951e0",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2955c0",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f92c",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f934",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f93c",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f944",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d4fc0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7790",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7b00",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7fb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ea0",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3eb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ec0",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ed0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.16 installer (Tencent Developer ID, team 5A4RE8SF68), archived by zsbai/wechat-versions; dmg SHA-256 077b99658e2d2083458a181f6de21ac9442fef8479635e367afdb0e4b1be5f22, arm64 wechat.dylib slice SHA-256 c6426028f92794b50ef5edab8e8a94d79e30c68979ec004474fc634f07702a2f. arm64 revoke points located with tools/locate_revoke.py (4.1.13 delta 0x7a0 generation) and updater with tools/locate_update.py. x86_64 keeptip: the newmsgid conversion call 0x54 after `movabs rax,\"newmsgid\"`, followed by the store to +0x1c8 (same shape as 270102/270135); x86_64 updater methods resolved by ObjC names. Static checks plus patch/switch/restore and strict signature verification on a copy of the installer; no real-chat or Intel hardware test."
+  },
+  {
+    "version": "270348",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7a208",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7a208",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4e7a9a8",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "568dfbd",
+            "expected": "E8DE3DE9FF",
+            "asm": "31C0909090"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "291de4",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "293f1c",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2941e0",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2945c0",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e934",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e93c",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e944",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29e94c",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d4fc0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7790",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7b00",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7fb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3eb0",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ec0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ed0",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ee0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.12 installer (Tencent Developer ID, team 5A4RE8SF68), archived by zsbai/wechat-versions; dmg SHA-256 413f2425dfb388c73ed74a172301daac6ceba17ec53e59789f0b870723744b66, arm64 wechat.dylib slice SHA-256 063b3025b25cb357657b2bd4a771ba0994b286190a17a2cb75b5c98a63cdc10b. arm64 revoke points located with tools/locate_revoke.py (4.1.13 delta 0x7a0 generation) and updater with tools/locate_update.py. x86_64 keeptip: the newmsgid conversion call 0x54 after `movabs rax,\"newmsgid\"`, followed by the store to +0x1c8 (same shape as 270102/270135); x86_64 updater methods resolved by ObjC names. Static checks plus patch/switch/restore and strict signature verification on a copy of the installer; no real-chat or Intel hardware test."
+  },
+  {
+    "version": "270345",
+    "targets": [
+      {
+        "identifier": "revoke",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7787c",
+            "expected": "40100034",
+            "asm": "82000014"
+          }
+        ]
+      },
+      {
+        "identifier": "revoke-keeptip",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "4e7787c",
+            "expected": [
+              "40100034",
+              "82000014"
+            ],
+            "asm": "40100034"
+          },
+          {
+            "arch": "arm64",
+            "addr": "4e7801c",
+            "expected": "60E600F9",
+            "asm": "7FE600F9"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "5689c8d",
+            "expected": "E8DE3DE9FF",
+            "asm": "31C0909090"
+          }
+        ]
+      },
+      {
+        "identifier": "update",
+        "binary": "Contents/Resources/wechat.dylib",
+        "entries": [
+          {
+            "arch": "arm64",
+            "addr": "292de4",
+            "expected": "FC6FBBA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "294f1c",
+            "expected": "FFC305D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2951e0",
+            "expected": "FF4301D1",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "2955c0",
+            "expected": "F657BDA9",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f934",
+            "expected": "00604039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f93c",
+            "expected": "02600039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f944",
+            "expected": "00644039C0035FD6",
+            "asm": "00008052C0035FD6"
+          },
+          {
+            "arch": "arm64",
+            "addr": "29f94c",
+            "expected": "02640039",
+            "asm": "C0035FD6"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d4fc0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7790",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7b00",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2d7fb0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3eb0",
+            "expected": "554889E50FBE4718",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ec0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ed0",
+            "expected": "554889E50FBE4719",
+            "asm": "554889E531C09090"
+          },
+          {
+            "arch": "x86_64",
+            "addr": "2e3ee0",
+            "expected": "554889E5",
+            "asm": "C3909090"
+          }
+        ]
+      }
+    ],
+    "source": "Official 4.2.0.9 installer (Tencent Developer ID, team 5A4RE8SF68), archived by zsbai/wechat-versions; dmg SHA-256 d64b5458eaf4d31537e52034d4d8d669522e11f97ecd8cf4796be47cde74f063, arm64 wechat.dylib slice SHA-256 b49d785e76927a8f1149e4db85db133001622447f892108a0927f092ff0bddec. arm64 revoke points located with tools/locate_revoke.py (4.1.13 delta 0x7a0 generation) and updater with tools/locate_update.py. x86_64 keeptip: the newmsgid conversion call 0x54 after `movabs rax,\"newmsgid\"`, followed by the store to +0x1c8 (same shape as 270102/270135); x86_64 updater methods resolved by ObjC names. Static checks plus patch/switch/restore and strict signature verification on a copy of the installer; no real-chat or Intel hardware test."
   },
   {
     "version": "270135",

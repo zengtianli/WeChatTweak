@@ -95,8 +95,9 @@ _payload:
     cmp     x9, #12
     b.lo    .Lnext
     ldr     w8, [x13]
-    mov     w9, #0x7559
-    movk    w9, #0x206f, lsl #16
+    // "You " little-endian = 0x20756f59 (bytes 59 6f 75 20)
+    mov     w9, #0x6f59
+    movk    w9, #0x2075, lsl #16
     cmp     w8, w9
     b.ne    .Lnext
     ldr     w8, [x13, #4]
